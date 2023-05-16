@@ -33,7 +33,13 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define FLASH_APP_BASEADDR 0x08020000 	//128KB application offset
+#define FLASH_APP_SZ 0x00020000 		//256KB application firmware size
 
+#define I2CSLV_RXBUF_SZ 	256
+
+#define I2CSLV_FLASH		0x22
+#define I2CSLV_CMD 			0x20
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -64,6 +70,15 @@ UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 Regs regs;
+
+uint16_t rxBufferPtr = 0;
+uint16_t txBufferPtr = 0;
+uint8_t rxBuffer[I2CSLV_RXBUF_SZ];
+
+uint32_t rxFlashMemPtr = 0;
+uint32_t txFlashMemPtr = 0;
+uint8_t flashBuf[FLASH_APP_SZ]; //RAM flash buffer 256KB
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -170,18 +185,10 @@ int main(void)
   lmk03328_init(&hi2c3);
   HAL_Delay(10);
 
-  uint8_t rx;
-
-  for(uint8_t n = 0; n < LMK_REGS_SZ; n++) {
-	  rx = lmk03328_read(n);
-	  printf("%d\t0x%02x\n",n, rx);
-  }
-  HAL_Delay(10);
-
-  //clr mock flash
-  /*for(uint32_t n = 0; n < 131071; n++) {
+  //clear flash RAM buffer
+  for(uint32_t n = 0; n < 131071; n++) {
 	  flashBuf[n] = 0xFF;
-  }*/
+  }
 
   /* USER CODE END 2 */
 
