@@ -22,7 +22,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "i2cregdefs.h"
+#include "confmem.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -62,7 +63,7 @@ TIM_HandleTypeDef htim5;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-
+Regs regs;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -131,6 +132,28 @@ int main(void)
   MX_TIM2_Init();
   MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 2 */
+
+  printf("DBARLitePcie Bootloader\n");
+  printf("Build ");
+  printf(__TIMESTAMP__);
+  printf("\n");
+
+  ConfMem conf;
+  ConfigMemory_Download(&conf);
+
+  regs.info.fwVersion = 0xB1000000;
+  regs.info.jumpCode = 0xAA;
+  regs.info.hwRevision = conf.hwRevision;
+
+  regs.info.serial[0] = conf.serial[0];
+  regs.info.serial[1] = conf.serial[1];
+  regs.info.serial[2] = conf.serial[2];
+
+  uint8_t confMemPtr = 0;
+  regs.config.AddrOffset = confMemPtr;
+  regs.config.Control = 0;
+  uint8_t* srcAddress = (uint8_t*)&conf + confMemPtr;
+  regs.config.Value = *srcAddress;
 
   /* USER CODE END 2 */
 
