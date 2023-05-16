@@ -185,6 +185,10 @@ int main(void)
   lmk03328_init(&hi2c3);
   HAL_Delay(10);
 
+  cdcun1208_init(&hi2c3);
+
+  ds160_init(&hi2c3);
+
   //clear flash RAM buffer
   for(uint32_t n = 0; n < 131071; n++) {
 	  flashBuf[n] = 0xFF;

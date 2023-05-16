@@ -7,6 +7,7 @@
 C_SRCS += \
 ../Core/Src/cdcun1208.c \
 ../Core/Src/confmem.c \
+../Core/Src/ds160pr421.c \
 ../Core/Src/lmk03328.c \
 ../Core/Src/main.c \
 ../Core/Src/stm32h7xx_hal_msp.c \
@@ -18,6 +19,7 @@ C_SRCS += \
 OBJS += \
 ./Core/Src/cdcun1208.o \
 ./Core/Src/confmem.o \
+./Core/Src/ds160pr421.o \
 ./Core/Src/lmk03328.o \
 ./Core/Src/main.o \
 ./Core/Src/stm32h7xx_hal_msp.o \
@@ -29,6 +31,7 @@ OBJS += \
 C_DEPS += \
 ./Core/Src/cdcun1208.d \
 ./Core/Src/confmem.d \
+./Core/Src/ds160pr421.d \
 ./Core/Src/lmk03328.d \
 ./Core/Src/main.d \
 ./Core/Src/stm32h7xx_hal_msp.d \
@@ -45,7 +48,7 @@ Core/Src/%.o Core/Src/%.su Core/Src/%.cyclo: ../Core/Src/%.c Core/Src/subdir.mk
 clean: clean-Core-2f-Src
 
 clean-Core-2f-Src:
-	-$(RM) ./Core/Src/cdcun1208.cyclo ./Core/Src/cdcun1208.d ./Core/Src/cdcun1208.o ./Core/Src/cdcun1208.su ./Core/Src/confmem.cyclo ./Core/Src/confmem.d ./Core/Src/confmem.o ./Core/Src/confmem.su ./Core/Src/lmk03328.cyclo ./Core/Src/lmk03328.d ./Core/Src/lmk03328.o ./Core/Src/lmk03328.su ./Core/Src/main.cyclo ./Core/Src/main.d ./Core/Src/main.o ./Core/Src/main.su ./Core/Src/stm32h7xx_hal_msp.cyclo ./Core/Src/stm32h7xx_hal_msp.d ./Core/Src/stm32h7xx_hal_msp.o ./Core/Src/stm32h7xx_hal_msp.su ./Core/Src/stm32h7xx_it.cyclo ./Core/Src/stm32h7xx_it.d ./Core/Src/stm32h7xx_it.o ./Core/Src/stm32h7xx_it.su ./Core/Src/syscalls.cyclo ./Core/Src/syscalls.d ./Core/Src/syscalls.o ./Core/Src/syscalls.su ./Core/Src/sysmem.cyclo ./Core/Src/sysmem.d ./Core/Src/sysmem.o ./Core/Src/sysmem.su ./Core/Src/system_stm32h7xx.cyclo ./Core/Src/system_stm32h7xx.d ./Core/Src/system_stm32h7xx.o ./Core/Src/system_stm32h7xx.su
+	-$(RM) ./Core/Src/cdcun1208.cyclo ./Core/Src/cdcun1208.d ./Core/Src/cdcun1208.o ./Core/Src/cdcun1208.su ./Core/Src/confmem.cyclo ./Core/Src/confmem.d ./Core/Src/confmem.o ./Core/Src/confmem.su ./Core/Src/ds160pr421.cyclo ./Core/Src/ds160pr421.d ./Core/Src/ds160pr421.o ./Core/Src/ds160pr421.su ./Core/Src/lmk03328.cyclo ./Core/Src/lmk03328.d ./Core/Src/lmk03328.o ./Core/Src/lmk03328.su ./Core/Src/main.cyclo ./Core/Src/main.d ./Core/Src/main.o ./Core/Src/main.su ./Core/Src/stm32h7xx_hal_msp.cyclo ./Core/Src/stm32h7xx_hal_msp.d ./Core/Src/stm32h7xx_hal_msp.o ./Core/Src/stm32h7xx_hal_msp.su ./Core/Src/stm32h7xx_it.cyclo ./Core/Src/stm32h7xx_it.d ./Core/Src/stm32h7xx_it.o ./Core/Src/stm32h7xx_it.su ./Core/Src/syscalls.cyclo ./Core/Src/syscalls.d ./Core/Src/syscalls.o ./Core/Src/syscalls.su ./Core/Src/sysmem.cyclo ./Core/Src/sysmem.d ./Core/Src/sysmem.o ./Core/Src/sysmem.su ./Core/Src/system_stm32h7xx.cyclo ./Core/Src/system_stm32h7xx.d ./Core/Src/system_stm32h7xx.o ./Core/Src/system_stm32h7xx.su
 
 .PHONY: clean-Core-2f-Src
 

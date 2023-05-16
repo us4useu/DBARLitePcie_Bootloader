@@ -2,7 +2,7 @@
  * cdcun1208.c
  *
  *  Created on: 16 maj 2023
- *      Author: Admin
+ *      Author: JR
  */
 
 #include "cdcun1208.h"

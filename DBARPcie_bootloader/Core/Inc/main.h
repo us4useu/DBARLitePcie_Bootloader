@@ -30,6 +30,7 @@ extern "C" {
 #include "stm32h7xx_hal.h"
 #include "lmk03328.h"
 #include "cdcun1208.h"
+#include "ds160pr421.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 

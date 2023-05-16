@@ -1,5 +1,6 @@
 "./Core/Src/cdcun1208.o"
 "./Core/Src/confmem.o"
+"./Core/Src/ds160pr421.o"
 "./Core/Src/lmk03328.o"
 "./Core/Src/main.o"
 "./Core/Src/stm32h7xx_hal_msp.o"
