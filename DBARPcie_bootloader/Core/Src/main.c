@@ -82,6 +82,9 @@ uint32_t rxFlashMemPtr = 0;
 uint32_t txFlashMemPtr = 0;
 uint8_t flashBuf[FLASH_APP_SZ]; //RAM flash buffer 256KB
 
+uint8_t i2cSlvDest = 0;
+uint16_t i2cSlvTxSize = 0;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -955,6 +958,85 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+void HAL_I2C_AddrCallback(I2C_HandleTypeDef *hi2c, uint8_t TransferDirection, uint16_t AddrMatchCode) {
+
+#ifdef UART_DBG
+	char dbg[6];
+	sprintf(dbg, "0x%04x", AddrMatchCode);
+	printf(dbg);
+	printf(" I2C Address detected\n");
+#endif
+
+	i2cSlvDest = AddrMatchCode; //CMD or FLASH
+
+	rxBufferPtr = 0;
+
+	uint8_t* txPtr = flashBuf;
+	txPtr+=txFlashMemPtr;
+
+	if(TransferDirection == I2C_DIRECTION_TRANSMIT) {
+		HAL_I2C_Slave_Seq_Receive_IT(hi2c, rxBuffer, 1, I2C_NEXT_FRAME);
+	}
+	else if(TransferDirection == I2C_DIRECTION_RECEIVE) {
+		if(i2cSlvDest == I2CSLV_CMD) {
+			uint8_t* srcAddress;
+			srcAddress = (uint8_t*)&regs + txBufferPtr;
+			i2cSlvTxSize = (0x50-txBufferPtr);
+			HAL_I2C_Slave_Seq_Transmit_IT(hi2c, srcAddress, i2cSlvTxSize , I2C_NEXT_FRAME);
+		}
+		else if(i2cSlvDest == I2CSLV_FLASH) {
+			i2cSlvTxSize = 256;
+			HAL_I2C_Slave_Seq_Transmit_IT(hi2c, txPtr, i2cSlvTxSize, I2C_NEXT_FRAME);
+		}
+
+	}
+}
+
+void HAL_I2C_SlaveTxCpltCallback(I2C_HandleTypeDef *hi2c) {
+	if(i2cSlvDest == I2CSLV_CMD) {
+		//Only gets called if regs memory space rolls over, transmit regs from 0x00 offset
+		uint8_t* srcAddress = (uint8_t*)&regs;
+		HAL_I2C_Slave_Seq_Transmit_IT(hi2c, srcAddress, 0x50, I2C_NEXT_FRAME);
+	}
+	else if(i2cSlvDest == I2CSLV_FLASH) {
+		i2cSlvTxSize = 256;
+		txFlashMemPtr += i2cSlvTxSize;
+		uint8_t* txPtr = flashBuf;
+		txPtr += txFlashMemPtr;
+		HAL_I2C_Slave_Seq_Transmit_IT(hi2c, txPtr, i2cSlvTxSize, I2C_NEXT_FRAME);
+	}
+}
+
+void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c) {
+
+	if(rxBufferPtr == 0 && i2cSlvDest == I2CSLV_CMD)
+		txBufferPtr = rxBuffer[0];
+
+	if(	rxBufferPtr < 255) {
+		rxBufferPtr++;
+	}
+
+	HAL_I2C_Slave_Seq_Receive_IT(&hi2c1, &rxBuffer[rxBufferPtr], 1, I2C_LAST_FRAME);
+}
+
+void HAL_I2C_ListenCpltCallback(I2C_HandleTypeDef *hi2c) {
+	if(i2cSlvDest == I2CSLV_FLASH) {
+		memcpy(flashBuf + txFlashMemPtr, rxBuffer, (rxBufferPtr + 1));
+		txFlashMemPtr += (rxBufferPtr + 1);
+	}
+	else if(i2cSlvDest == I2CSLV_CMD) {
+		//Process I2C command
+	}
+	HAL_I2C_EnableListen_IT(&hi2c1);
+}
+
+void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c) {
+	if( HAL_I2C_GetError(hi2c) != HAL_I2C_ERROR_AF ) //Transaction terminated by master - don't care
+	{
+		printf("I2C Error\n");
+	}
+}
 
 void triggerSelect(uint8_t trigSel) {
 	if(trigSel == INTERNAL) {
