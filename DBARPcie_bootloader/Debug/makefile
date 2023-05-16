@@ -64,8 +64,8 @@ all: main-build
 main-build: DBARPcie_bootloader.elf secondary-outputs
 
 # Tool invocations
-DBARPcie_bootloader.elf DBARPcie_bootloader.map: $(OBJS) $(USER_OBJS) C:\Users\Admin\STM32CubeIDE\workspace_1.12.1\DBARPcie_bootloader\STM32H725AEIX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "DBARPcie_bootloader.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m7 -T"C:\Users\Admin\STM32CubeIDE\workspace_1.12.1\DBARPcie_bootloader\STM32H725AEIX_FLASH.ld" --specs=nosys.specs -Wl,-Map="DBARPcie_bootloader.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv5-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+DBARPcie_bootloader.elf DBARPcie_bootloader.map: $(OBJS) $(USER_OBJS) C:\Users\Admin\Documents\GitHub\DBARLitePcie_Bootloader\DBARPcie_bootloader\STM32H725AEIX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-gcc -o "DBARPcie_bootloader.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m7 -T"C:\Users\Admin\Documents\GitHub\DBARLitePcie_Bootloader\DBARPcie_bootloader\STM32H725AEIX_FLASH.ld" --specs=nosys.specs -Wl,-Map="DBARPcie_bootloader.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv5-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 

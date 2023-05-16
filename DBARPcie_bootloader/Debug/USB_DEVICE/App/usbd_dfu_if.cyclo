@@ -1,6 +1,0 @@
-usbd_dfu_if.c:156:10:MEM_If_Init_HS	1
-usbd_dfu_if.c:167:10:MEM_If_DeInit_HS	1
-usbd_dfu_if.c:179:10:MEM_If_Erase_HS	1
-usbd_dfu_if.c:195:10:MEM_If_Write_HS	1
-usbd_dfu_if.c:213:10:MEM_If_Read_HS	1
-usbd_dfu_if.c:232:10:MEM_If_GetStatus_HS	1
