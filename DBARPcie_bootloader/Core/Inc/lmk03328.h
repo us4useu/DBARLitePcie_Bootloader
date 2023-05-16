@@ -11,7 +11,7 @@
 #include "main.h"
 
 #define LMK_ADDR		0x54
-#define LMK_REGS_SZ 	172
+#define LMK_REGS_SZ 	149
 
 void lmk03328_write(uint8_t reg, uint8_t value);
 uint8_t lmk03328_read(uint8_t reg);

@@ -161,6 +161,28 @@ int main(void)
   uint8_t* srcAddress = (uint8_t*)&conf + confMemPtr;
   regs.config.Value = *srcAddress;
 
+  HAL_Delay(10);
+  HAL_GPIO_WritePin(CLK_PDN_GPIO_Port, CLK_PDN_Pin, GPIO_PIN_SET);
+  HAL_Delay(100);
+
+  lmk03328_write(12, 0x51); //LMK soft reset
+  HAL_Delay(10);
+  lmk03328_init(&hi2c3);
+  HAL_Delay(10);
+
+  uint8_t rx;
+
+  for(uint8_t n = 0; n < LMK_REGS_SZ; n++) {
+	  rx = lmk03328_read(n);
+	  printf("%d\t0x%02x\n",n, rx);
+  }
+  HAL_Delay(10);
+
+  //clr mock flash
+  /*for(uint32_t n = 0; n < 131071; n++) {
+	  flashBuf[n] = 0xFF;
+  }*/
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -911,7 +933,6 @@ static void MX_GPIO_Init(void)
   HAL_NVIC_EnableIRQ(EXTI2_IRQn);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
-  HAL_GPIO_WritePin(GPIOG, CLK_PDN_Pin, GPIO_PIN_SET);
 /* USER CODE END MX_GPIO_Init_2 */
 }
 
