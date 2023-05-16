@@ -33,6 +33,9 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define EXTERNAL 	0xF0
+#define INTERNAL	0x0F
+
 #define FLASH_APP_BASEADDR 0x08020000 	//128KB application offset
 #define FLASH_APP_SZ 0x00020000 		//256KB application firmware size
 
@@ -99,6 +102,10 @@ static void MX_TIM2_Init(void);
 
 void getBuildDate(uint8_t* year8, uint8_t* month8, uint8_t* day8);
 void getBuildTime(uint8_t* hour8, uint8_t* min8, uint8_t* sec8);
+
+void triggerSelect(uint8_t trigSel);
+void sffSelect(uint8_t sffSel);
+void reflckSelect(uint8_t refSel);
 
 /* USER CODE END PFP */
 
@@ -178,10 +185,10 @@ int main(void)
 
   HAL_Delay(10);
   HAL_GPIO_WritePin(CLK_PDN_GPIO_Port, CLK_PDN_Pin, GPIO_PIN_SET);
-  HAL_Delay(100);
+  HAL_Delay(50);
 
-  lmk03328_write(12, 0x51); //LMK soft reset
-  HAL_Delay(10);
+  //lmk03328_write(12, 0x51); //LMK soft reset
+  HAL_Delay(50);
   lmk03328_init(&hi2c3);
   HAL_Delay(10);
 
@@ -948,6 +955,39 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+void triggerSelect(uint8_t trigSel) {
+	if(trigSel == INTERNAL) {
+		//config CDCUN to use ARRIUS0 trigger
+		//TO DO
+	}
+	else if(trigSel == External) {
+		//config CDCUN to use external trigger
+		//TO DO
+	}
+}
+
+void sffSelect(uint8_t sffSel) {
+	if(trigSel == INTERNAL) {
+		//config DS160s to use SFF8643 path
+		//TO DO
+	}
+	else if(trigSel == External) {
+		//config DS160s to use SFF8644 path
+		//TO DO
+	}
+}
+
+void reflckSelect(uint8_t refSel) {
+	if(refSel == INTERNAL) {
+		//config LMK for XTAL clock reference
+		//TO DO
+	}
+	else if(refSel == External) {
+		//config LMK for external clock reference
+		//TO DO
+	}
+}
 
 uint8_t getMonthNumber(const char* monthStr) {
     if (strcmp(monthStr, "Jan") == 0) return 1;
