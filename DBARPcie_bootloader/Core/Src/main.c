@@ -82,6 +82,9 @@ static void MX_USART2_UART_Init(void);
 static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
 
+void getBuildDate(uint8_t* year8, uint8_t* month8, uint8_t* day8);
+void getBuildTime(uint8_t* hour8, uint8_t* min8, uint8_t* sec8);
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -148,6 +151,9 @@ int main(void)
   regs.info.serial[0] = conf.serial[0];
   regs.info.serial[1] = conf.serial[1];
   regs.info.serial[2] = conf.serial[2];
+
+  getBuildDate(&(regs.info.buildYear), &(regs.info.buildMonth), &(regs.info.buildDay));
+  getBuildTime(&(regs.info.buildHour), &(regs.info.buildMin), &(regs.info.buildSec));
 
   uint8_t confMemPtr = 0;
   regs.config.AddrOffset = confMemPtr;
@@ -910,6 +916,47 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+uint8_t getMonthNumber(const char* monthStr) {
+    if (strcmp(monthStr, "Jan") == 0) return 1;
+    else if (strcmp(monthStr, "Feb") == 0) return 2;
+    else if (strcmp(monthStr, "Mar") == 0) return 3;
+    else if (strcmp(monthStr, "Apr") == 0) return 4;
+    else if (strcmp(monthStr, "May") == 0) return 5;
+    else if (strcmp(monthStr, "Jun") == 0) return 6;
+    else if (strcmp(monthStr, "Jul") == 0) return 7;
+    else if (strcmp(monthStr, "Aug") == 0) return 8;
+    else if (strcmp(monthStr, "Sep") == 0) return 9;
+    else if (strcmp(monthStr, "Oct") == 0) return 10;
+    else if (strcmp(monthStr, "Nov") == 0) return 11;
+    else if (strcmp(monthStr, "Dec") == 0) return 12;
+    else return 0;  // Invalid month
+}
+
+void getBuildDate(uint8_t* year8, uint8_t* month8, uint8_t* day8){
+	const char* dateStr = __DATE__;
+	char monthStr[4];
+	int year, month, day;
+
+	sscanf(dateStr, "%s %d %d", monthStr, &day, &year);
+	month = getMonthNumber(monthStr);
+
+	year %= 100;
+	*year8 = (uint8_t)year;
+	*month8 = (uint8_t)month;
+	*day8 = (uint8_t)day;
+}
+
+void getBuildTime(uint8_t* hour8, uint8_t* min8, uint8_t* sec8){
+	const char* timeStr = __TIME__;
+	int hour, minute, second;
+
+	sscanf(timeStr, "%d:%d:%d", &hour, &minute, &second);
+
+	*hour8 = (uint8_t)hour;
+	*min8 = (uint8_t)minute;
+	*sec8 = (uint8_t)second;
+}
 
 PUTCHAR_PROTOTYPE
 {
