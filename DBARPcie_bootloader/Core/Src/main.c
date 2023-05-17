@@ -33,6 +33,8 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define FW_VER	0xB1000000 //Bootloader version 1.0.0.0
+
 #define EXTERNAL 	0xF0
 #define INTERNAL	0x0F
 
@@ -43,6 +45,13 @@
 
 #define I2CSLV_FLASH		0x22
 #define I2CSLV_CMD 			0x20
+
+//Power states
+#define PWR_OFF 		0
+#define PWR_ON			1
+#define PWR_PWRDOWN		0x10
+#define PWR_PWRUP		0x11
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -85,14 +94,18 @@ uint8_t flashBuf[FLASH_APP_SZ]; //RAM flash buffer 256KB
 uint8_t i2cSlvDest = 0;
 uint16_t i2cSlvTxSize = 0;
 
+uint8_t pwrState = PWR_OFF;
+
+uint32_t tempAmbient = 0;
+
+TIM_OC_InitTypeDef fan0PWMConf;
+TIM_OC_InitTypeDef fan1PWMConf;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 void PeriphCommonClock_Config(void);
 static void MX_GPIO_Init(void);
-static void MX_I2C1_Init(void);
-static void MX_I2C2_Init(void);
 static void MX_I2C3_Init(void);
 static void MX_I2C4_Init(void);
 static void MX_I2C5_Init(void);
@@ -100,7 +113,9 @@ static void MX_TIM1_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_TIM5_Init(void);
 static void MX_USART2_UART_Init(void);
+static void MX_I2C1_Init(void);
 static void MX_TIM2_Init(void);
+static void MX_I2C2_Init(void);
 /* USER CODE BEGIN PFP */
 
 void getBuildDate(uint8_t* year8, uint8_t* month8, uint8_t* day8);
@@ -148,8 +163,6 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_I2C1_Init();
-  MX_I2C2_Init();
   MX_I2C3_Init();
   MX_I2C4_Init();
   MX_I2C5_Init();
@@ -157,8 +170,10 @@ int main(void)
   MX_TIM3_Init();
   MX_TIM5_Init();
   MX_USART2_UART_Init();
-  MX_TIM2_Init();
+  MX_I2C1_Init();
   MX_USB_DEVICE_Init();
+  MX_TIM2_Init();
+  MX_I2C2_Init();
   /* USER CODE BEGIN 2 */
 
   printf("DBARLitePcie Bootloader\n");
@@ -169,15 +184,10 @@ int main(void)
   ConfMem conf;
   ConfigMemory_Download(&conf);
 
-  regs.info.fwVersion = 0xB1000000;
-  regs.info.hwRevision = conf.hwRevision;
+  memcpy((void*)(&regs), (void*)(&conf), 0x20); //copy serial number and hw info from config memory
 
-  regs.info.serial[0] = conf.serial[0];
-  regs.info.serial[1] = conf.serial[1];
-  regs.info.serial[2] = conf.serial[2];
-
-  memcpy(regs.info.snString, conf.snString, 16);
-
+  regs.info.fwVersion = FW_VER; //set firmware version
+  //set firmware build time
   getBuildDate(&(regs.info.buildYear), &(regs.info.buildMonth), &(regs.info.buildDay));
   getBuildTime(&(regs.info.buildHour), &(regs.info.buildMin), &(regs.info.buildSec));
 
@@ -187,23 +197,19 @@ int main(void)
   uint8_t* srcAddress = (uint8_t*)&conf + confMemPtr;
   regs.config.Value = *srcAddress;
 
-  HAL_Delay(10);
-  HAL_GPIO_WritePin(CLK_PDN_GPIO_Port, CLK_PDN_Pin, GPIO_PIN_SET);
-  HAL_Delay(50);
-
-  //lmk03328_write(12, 0x51); //LMK soft reset
-  HAL_Delay(50);
-  lmk03328_init(&hi2c3);
-  HAL_Delay(10);
-
   cdcun1208_init(&hi2c3);
-
   ds160_init(&hi2c3);
 
   //clear flash RAM buffer
-  for(uint32_t n = 0; n < 131071; n++) {
+  for(uint32_t n = 0; n < FLASH_APP_SZ; n++) {
 	  flashBuf[n] = 0xFF;
   }
+
+  //Start listening on I2C2 (ARRIUS_0 i2c)
+  HAL_I2C_EnableListen_IT(&hi2c2);
+
+  setFan0PWM(50);
+  setFan1PWM(50);
 
   /* USER CODE END 2 */
 
@@ -211,6 +217,24 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	if(pwrState == PWR_PWRUP) {
+		//start power up sequence
+		lmk03328_enable();
+		HAL_Delay(100);
+		lmk03328_init(&hi2c3);
+
+		pwrState = PWR_ON;
+		setPowerLed(GPIO_PIN_SET);
+		printf("POWER ON \n");
+	}
+	else if(pwrState == PWR_PWRDOWN) {
+		//start power down sequence
+		lmk03328_disable();
+
+		pwrState = PWR_OFF;
+		setPowerLed(GPIO_PIN_RESET);
+		printf("POWER OFF \n");
+	}
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -567,9 +591,9 @@ static void MX_TIM1_Init(void)
 
   /* USER CODE END TIM1_Init 1 */
   htim1.Instance = TIM1;
-  htim1.Init.Prescaler = 9;
+  htim1.Init.Prescaler = 39;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim1.Init.Period = 199;
+  htim1.Init.Period = 99;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim1.Init.RepetitionCounter = 0;
   htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
@@ -585,7 +609,7 @@ static void MX_TIM1_Init(void)
     Error_Handler();
   }
   sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 71;
+  sConfigOC.Pulse = 74;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCNPolarity = TIM_OCNPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
@@ -615,7 +639,11 @@ static void MX_TIM1_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN TIM1_Init 2 */
+  fan0PWMConf = sConfigOC;
+  fan1PWMConf = sConfigOC;
 
+  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
+  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
   /* USER CODE END TIM1_Init 2 */
   HAL_TIM_MspPostInit(&htim1);
 
@@ -944,7 +972,7 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin : POWER_BTN_Pin */
   GPIO_InitStruct.Pin = POWER_BTN_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(POWER_BTN_GPIO_Port, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
@@ -1018,7 +1046,7 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c) {
 		rxBufferPtr++;
 	}
 
-	HAL_I2C_Slave_Seq_Receive_IT(&hi2c1, &rxBuffer[rxBufferPtr], 1, I2C_LAST_FRAME);
+	HAL_I2C_Slave_Seq_Receive_IT(hi2c, &rxBuffer[rxBufferPtr], 1, I2C_LAST_FRAME);
 }
 
 void HAL_I2C_ListenCpltCallback(I2C_HandleTypeDef *hi2c) {
@@ -1029,7 +1057,7 @@ void HAL_I2C_ListenCpltCallback(I2C_HandleTypeDef *hi2c) {
 	else if(i2cSlvDest == I2CSLV_CMD) {
 		//Process I2C command
 	}
-	HAL_I2C_EnableListen_IT(&hi2c1);
+	HAL_I2C_EnableListen_IT(hi2c);
 }
 
 void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c) {
@@ -1088,7 +1116,7 @@ uint8_t getMonthNumber(const char* monthStr) {
     else return 0;  // Invalid month
 }
 
-void getBuildDate(uint8_t* year8, uint8_t* month8, uint8_t* day8){
+void getBuildDate(uint8_t* year8, uint8_t* month8, uint8_t* day8) {
 	const char* dateStr = __DATE__;
 	char monthStr[4];
 	int year, month, day;
@@ -1102,7 +1130,7 @@ void getBuildDate(uint8_t* year8, uint8_t* month8, uint8_t* day8){
 	*day8 = (uint8_t)day;
 }
 
-void getBuildTime(uint8_t* hour8, uint8_t* min8, uint8_t* sec8){
+void getBuildTime(uint8_t* hour8, uint8_t* min8, uint8_t* sec8) {
 	const char* timeStr = __TIME__;
 	int hour, minute, second;
 
@@ -1111,6 +1139,45 @@ void getBuildTime(uint8_t* hour8, uint8_t* min8, uint8_t* sec8){
 	*hour8 = (uint8_t)hour;
 	*min8 = (uint8_t)minute;
 	*sec8 = (uint8_t)second;
+}
+
+void setFan0PWM(uint8_t dutyCycle) {
+	if(dutyCycle > 100)
+		dutyCycle = 100;
+	else if(dutyCycle < 33)
+		dutyCycle = 33;
+
+	__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_3, dutyCycle);
+}
+
+void setFan1PWM(uint8_t dutyCycle) {
+	if(dutyCycle > 100)
+		dutyCycle = 100;
+	else if(dutyCycle < 33)
+		dutyCycle = 33;
+
+	__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_2, dutyCycle);
+}
+
+void setPCLed(GPIO_PinState state) {
+	HAL_GPIO_WritePin(PC_LED_GPIO_Port, PC_LED_Pin, state);
+}
+
+void setPowerLed(GPIO_PinState state) {
+	HAL_GPIO_WritePin(POWER_LED_GPIO_Port, POWER_LED_Pin, state);
+}
+
+void togglePower() {
+	if(pwrState == PWR_ON) {
+		pwrState = PWR_PWRDOWN;
+		printf("POWER OFF \n");
+		//start power down cycle
+	}
+	else if(pwrState == PWR_OFF) {
+		pwrState = PWR_PWRUP;
+		//start power on cycle
+	}
+
 }
 
 PUTCHAR_PROTOTYPE

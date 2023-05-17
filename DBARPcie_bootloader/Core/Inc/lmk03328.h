@@ -13,6 +13,8 @@
 #define LMK_ADDR		0x54
 #define LMK_REGS_SZ 	149
 
+void lmk03328_disable(void);
+void lmk03328_enable(void);
 void lmk03328_write(uint8_t reg, uint8_t value);
 uint8_t lmk03328_read(uint8_t reg);
 void lmk03328_init(I2C_HandleTypeDef *hi2c);

@@ -31,7 +31,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define PWR_BTN_PUSH_TIME_MS	1000
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -41,7 +41,7 @@
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN PV */
-
+uint16_t pwrBtnCounter = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -188,6 +188,21 @@ void PendSV_Handler(void)
 void SysTick_Handler(void)
 {
   /* USER CODE BEGIN SysTick_IRQn 0 */
+
+	if(HAL_GPIO_ReadPin(POWER_BTN_GPIO_Port, POWER_BTN_Pin) == GPIO_PIN_RESET) {
+		if(pwrBtnCounter < PWR_BTN_PUSH_TIME_MS)
+			pwrBtnCounter++;
+	}
+	else {
+		pwrBtnCounter = 0;
+	}
+
+	if(pwrBtnCounter == PWR_BTN_PUSH_TIME_MS) {
+		//toggle power state
+		togglePower();
+		pwrBtnCounter++;
+	}
+
 
   /* USER CODE END SysTick_IRQn 0 */
   HAL_IncTick();

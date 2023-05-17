@@ -23,6 +23,15 @@ const uint8_t lmk_conf[LMK_REGS_SZ] = {
 		0x00, 0x00, 0x40, 0x24, 0x00,
 };
 
+void lmk03328_enable() {
+	HAL_GPIO_WritePin(CLK_PDN_GPIO_Port, CLK_PDN_Pin, GPIO_PIN_SET);
+}
+
+void lmk03328_disable() {
+	HAL_GPIO_WritePin(CLK_PDN_GPIO_Port, CLK_PDN_Pin, GPIO_PIN_RESET);
+
+}
+
 void lmk03328_init(I2C_HandleTypeDef *hi2c){
 	lmk_hi2c = *hi2c;
 
