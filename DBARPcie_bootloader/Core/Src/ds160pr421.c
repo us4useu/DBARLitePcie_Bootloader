@@ -10,8 +10,12 @@
 I2C_HandleTypeDef ds160_hi2c;
 const uint8_t DS160ADDR[8] = { 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F};
 
-void ds160_passI2Chandle(I2C_HandleTypeDef *hi2c){
-	ds160_hi2c = *hi2c;
+void ds160_enable() {
+	HAL_GPIO_WritePin(DS_PD_GPIO_Port, DS_PD_Pin, GPIO_PIN_RESET);
+}
+
+void ds160_disable() {
+	HAL_GPIO_WritePin(DS_PD_GPIO_Port, DS_PD_Pin, GPIO_PIN_SET);
 }
 
 void ds160_write(uint8_t id, uint8_t addr, uint8_t reg){

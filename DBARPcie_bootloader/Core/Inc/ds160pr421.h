@@ -10,6 +10,8 @@
 
 #include "main.h"
 
+void ds160_enable();
+void ds160_disable();
 void ds160_write(uint8_t id, uint8_t addr, uint8_t reg);
 uint8_t ds160_read(uint8_t id, uint8_t addr);
 void ds160_writeall(uint8_t addr, uint8_t reg);

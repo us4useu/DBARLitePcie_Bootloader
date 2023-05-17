@@ -198,7 +198,6 @@ int main(void)
   regs.config.Value = *srcAddress;
 
   cdcun1208_init(&hi2c3);
-  ds160_init(&hi2c3);
 
   //clear flash RAM buffer
   for(uint32_t n = 0; n < FLASH_APP_SZ; n++) {
@@ -220,8 +219,11 @@ int main(void)
 	if(pwrState == PWR_PWRUP) {
 		//start power up sequence
 		lmk03328_enable();
-		HAL_Delay(100);
+		HAL_Delay(10);
 		lmk03328_init(&hi2c3);
+		ds160_enable();
+		HAL_Delay(10);
+		ds160_init(&hi2c3);
 
 		pwrState = PWR_ON;
 		setPowerLed(GPIO_PIN_SET);
@@ -230,6 +232,7 @@ int main(void)
 	else if(pwrState == PWR_PWRDOWN) {
 		//start power down sequence
 		lmk03328_disable();
+		ds160_disable();
 
 		pwrState = PWR_OFF;
 		setPowerLed(GPIO_PIN_RESET);
@@ -593,7 +596,7 @@ static void MX_TIM1_Init(void)
   htim1.Instance = TIM1;
   htim1.Init.Prescaler = 39;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim1.Init.Period = 99;
+  htim1.Init.Period = 999;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim1.Init.RepetitionCounter = 0;
   htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
@@ -908,14 +911,16 @@ static void MX_GPIO_Init(void)
                           |SFF_1_CBLPRSNT__Pin|SFF_1_PERST_Pin|SFF_1_CADDR_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOC, SFF_0_CINT__Pin|ARRIUS_0_PCIE_PERST_N_OD_Pin|HV_CTRL_Pin|DS_PD_Pin
-                          |PC_LED_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, SFF_0_CINT__Pin|ARRIUS_0_PCIE_PERST_N_OD_Pin|HV_CTRL_Pin|PC_LED_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOH, TRIGGER_SEL_Pin|TRIGGER_OTTP_MISO_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(TRIGGER_MODE_GPIO_Port, TRIGGER_MODE_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(DS_PD_GPIO_Port, DS_PD_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pins : ARRIUS_1_PCIE_PERST_N_OD_Pin ARRIUS_0_PMBUS_CNTRL_N_Pin ARRIUS_HV_CTRL_Pin POWER_LED_Pin */
   GPIO_InitStruct.Pin = ARRIUS_1_PCIE_PERST_N_OD_Pin|ARRIUS_0_PMBUS_CNTRL_N_Pin|ARRIUS_HV_CTRL_Pin|POWER_LED_Pin;
@@ -1170,7 +1175,6 @@ void setPowerLed(GPIO_PinState state) {
 void togglePower() {
 	if(pwrState == PWR_ON) {
 		pwrState = PWR_PWRDOWN;
-		printf("POWER OFF \n");
 		//start power down cycle
 	}
 	else if(pwrState == PWR_OFF) {
