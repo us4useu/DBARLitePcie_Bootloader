@@ -170,12 +170,13 @@ int main(void)
   ConfigMemory_Download(&conf);
 
   regs.info.fwVersion = 0xB1000000;
-  regs.info.jumpCode = 0xAA;
   regs.info.hwRevision = conf.hwRevision;
 
   regs.info.serial[0] = conf.serial[0];
   regs.info.serial[1] = conf.serial[1];
   regs.info.serial[2] = conf.serial[2];
+
+  memcpy(regs.info.snString, conf.snString, 16);
 
   getBuildDate(&(regs.info.buildYear), &(regs.info.buildMonth), &(regs.info.buildDay));
   getBuildTime(&(regs.info.buildHour), &(regs.info.buildMin), &(regs.info.buildSec));
@@ -1043,18 +1044,18 @@ void triggerSelect(uint8_t trigSel) {
 		//config CDCUN to use ARRIUS0 trigger
 		//TO DO
 	}
-	else if(trigSel == External) {
+	else if(trigSel == EXTERNAL) {
 		//config CDCUN to use external trigger
 		//TO DO
 	}
 }
 
 void sffSelect(uint8_t sffSel) {
-	if(trigSel == INTERNAL) {
+	if(sffSel == INTERNAL) {
 		//config DS160s to use SFF8643 path
 		//TO DO
 	}
-	else if(trigSel == External) {
+	else if(sffSel == EXTERNAL) {
 		//config DS160s to use SFF8644 path
 		//TO DO
 	}
@@ -1065,7 +1066,7 @@ void reflckSelect(uint8_t refSel) {
 		//config LMK for XTAL clock reference
 		//TO DO
 	}
-	else if(refSel == External) {
+	else if(refSel == EXTERNAL) {
 		//config LMK for external clock reference
 		//TO DO
 	}

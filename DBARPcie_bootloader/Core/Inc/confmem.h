@@ -11,10 +11,12 @@
 #include "main.h"
 
 typedef struct ConfMem {
+	uint8_t res0;
 	uint8_t serial[3];
-	uint8_t hwRevision[1];
-	uint8_t reserved[251];
-	uint8_t boot;
+	uint8_t res1[10];
+	uint8_t hwRevision;
+	uint8_t hwVersion;
+	char snString[16];
 }ConfMem;
 
 #define CONF_MEM_SZ 		sizeof(ConfMem)
