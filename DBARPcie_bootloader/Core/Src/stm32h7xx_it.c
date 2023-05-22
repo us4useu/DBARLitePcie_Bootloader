@@ -31,7 +31,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define PWR_BTN_PUSH_TIME_MS	1000
+#define PWR_BTN_PUSH_TIME_MS	100
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -300,6 +300,21 @@ void I2C2_ER_IRQHandler(void)
   /* USER CODE BEGIN I2C2_ER_IRQn 1 */
 
   /* USER CODE END I2C2_ER_IRQn 1 */
+}
+
+/**
+  * @brief This function handles EXTI line[15:10] interrupts.
+  */
+void EXTI15_10_IRQHandler(void)
+{
+  /* USER CODE BEGIN EXTI15_10_IRQn 0 */
+
+  /* USER CODE END EXTI15_10_IRQn 0 */
+  HAL_GPIO_EXTI_IRQHandler(SFF_1_PERST_Pin);
+  HAL_GPIO_EXTI_IRQHandler(SFF_0_PERST_Pin);
+  /* USER CODE BEGIN EXTI15_10_IRQn 1 */
+
+  /* USER CODE END EXTI15_10_IRQn 1 */
 }
 
 /**

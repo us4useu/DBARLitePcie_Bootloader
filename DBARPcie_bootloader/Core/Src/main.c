@@ -207,8 +207,18 @@ int main(void)
   //Start listening on I2C2 (ARRIUS_0 i2c)
   HAL_I2C_EnableListen_IT(&hi2c2);
 
-  setFan0PWM(50);
-  setFan1PWM(50);
+  setFan0PWM(0);
+  setFan1PWM(0);
+
+  uint8_t ds160_rx;
+
+  HAL_GPIO_WritePin(ARRIUS_0_PCIE_PERST_N_OD_GPIO_Port, ARRIUS_0_PCIE_PERST_N_OD_Pin,
+  							HAL_GPIO_ReadPin(SFF_0_PERST_GPIO_Port, SFF_0_PERST_Pin));
+
+  HAL_GPIO_WritePin(ARRIUS_1_PCIE_PERST_N_OD_GPIO_Port, ARRIUS_1_PCIE_PERST_N_OD_Pin,
+  							HAL_GPIO_ReadPin(SFF_1_PERST_GPIO_Port, SFF_1_PERST_Pin));
+
+  pwrState = PWR_OFF;
 
   /* USER CODE END 2 */
 
@@ -218,12 +228,19 @@ int main(void)
   {
 	if(pwrState == PWR_PWRUP) {
 		//start power up sequence
+		setFan0PWM(100);
+		setFan1PWM(100);
+
+		HAL_GPIO_WritePin(ARRIUS_0_PMBUS_CNTRL_N_GPIO_Port, ARRIUS_0_PMBUS_CNTRL_N_Pin, GPIO_PIN_SET);
+		HAL_Delay(100);
+
 		lmk03328_enable();
 		HAL_Delay(10);
 		lmk03328_init(&hi2c3);
+
 		ds160_enable();
-		HAL_Delay(10);
-		ds160_init(&hi2c3);
+		ds160_init(&hi2c3, EXTERNAL);
+		HAL_Delay(100);
 
 		pwrState = PWR_ON;
 		setPowerLed(GPIO_PIN_SET);
@@ -231,13 +248,21 @@ int main(void)
 	}
 	else if(pwrState == PWR_PWRDOWN) {
 		//start power down sequence
+		HAL_GPIO_WritePin(ARRIUS_0_PMBUS_CNTRL_N_GPIO_Port, ARRIUS_0_PMBUS_CNTRL_N_Pin, GPIO_PIN_RESET);
 		lmk03328_disable();
 		ds160_disable();
+
+		setFan0PWM(0);
+		setFan1PWM(0);
 
 		pwrState = PWR_OFF;
 		setPowerLed(GPIO_PIN_RESET);
 		printf("POWER OFF \n");
 	}
+	else if(pwrState == PWR_ON) {
+
+	}
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -596,7 +621,7 @@ static void MX_TIM1_Init(void)
   htim1.Instance = TIM1;
   htim1.Init.Prescaler = 39;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim1.Init.Period = 999;
+  htim1.Init.Period = 99;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim1.Init.RepetitionCounter = 0;
   htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
@@ -901,14 +926,14 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOF_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOE, ARRIUS_1_PCIE_PERST_N_OD_Pin|ARRIUS_0_PMBUS_CNTRL_N_Pin|ARRIUS_HV_CTRL_Pin|POWER_LED_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOE, ARRIUS_1_PCIE_PERST_N_OD_Pin|ARRIUS_1_PMBUS_CNTRL_N_Pin|ARRIUS_HV_CTRL_Pin|POWER_LED_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOG, CLK_PDN_Pin|SFF_0_PERST_Pin|SFF_MGTPWR_EN_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOG, CLK_PDN_Pin|SFF_MGTPWR_EN_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOD, SFF_0_CBLPRSNT__Pin|SFF_0_CADDR_Pin|TRIGGER_ERC_ADDR_CS_Pin|SFF_1_CINT__Pin
-                          |SFF_1_CBLPRSNT__Pin|SFF_1_PERST_Pin|SFF_1_CADDR_Pin, GPIO_PIN_RESET);
+                          |SFF_1_CBLPRSNT__Pin|SFF_1_CADDR_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOC, SFF_0_CINT__Pin|ARRIUS_0_PCIE_PERST_N_OD_Pin|HV_CTRL_Pin|PC_LED_Pin, GPIO_PIN_RESET);
@@ -917,13 +942,16 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOH, TRIGGER_SEL_Pin|TRIGGER_OTTP_MISO_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(ARRIUS_0_PMBUS_CNTRL_N_GPIO_Port, ARRIUS_0_PMBUS_CNTRL_N_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(TRIGGER_MODE_GPIO_Port, TRIGGER_MODE_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(DS_PD_GPIO_Port, DS_PD_Pin, GPIO_PIN_SET);
 
-  /*Configure GPIO pins : ARRIUS_1_PCIE_PERST_N_OD_Pin ARRIUS_0_PMBUS_CNTRL_N_Pin ARRIUS_HV_CTRL_Pin POWER_LED_Pin */
-  GPIO_InitStruct.Pin = ARRIUS_1_PCIE_PERST_N_OD_Pin|ARRIUS_0_PMBUS_CNTRL_N_Pin|ARRIUS_HV_CTRL_Pin|POWER_LED_Pin;
+  /*Configure GPIO pins : ARRIUS_1_PCIE_PERST_N_OD_Pin ARRIUS_1_PMBUS_CNTRL_N_Pin ARRIUS_HV_CTRL_Pin POWER_LED_Pin */
+  GPIO_InitStruct.Pin = ARRIUS_1_PCIE_PERST_N_OD_Pin|ARRIUS_1_PMBUS_CNTRL_N_Pin|ARRIUS_HV_CTRL_Pin|POWER_LED_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -935,17 +963,17 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : CLK_PDN_Pin SFF_0_PERST_Pin SFF_MGTPWR_EN_Pin */
-  GPIO_InitStruct.Pin = CLK_PDN_Pin|SFF_0_PERST_Pin|SFF_MGTPWR_EN_Pin;
+  /*Configure GPIO pins : CLK_PDN_Pin SFF_MGTPWR_EN_Pin */
+  GPIO_InitStruct.Pin = CLK_PDN_Pin|SFF_MGTPWR_EN_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
 
   /*Configure GPIO pins : SFF_0_CBLPRSNT__Pin SFF_0_CADDR_Pin TRIGGER_ERC_ADDR_CS_Pin SFF_1_CINT__Pin
-                           SFF_1_CBLPRSNT__Pin SFF_1_PERST_Pin SFF_1_CADDR_Pin */
+                           SFF_1_CBLPRSNT__Pin SFF_1_CADDR_Pin */
   GPIO_InitStruct.Pin = SFF_0_CBLPRSNT__Pin|SFF_0_CADDR_Pin|TRIGGER_ERC_ADDR_CS_Pin|SFF_1_CINT__Pin
-                          |SFF_1_CBLPRSNT__Pin|SFF_1_PERST_Pin|SFF_1_CADDR_Pin;
+                          |SFF_1_CBLPRSNT__Pin|SFF_1_CADDR_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -967,12 +995,31 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOH, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : ARRIUS_0_PMBUS_CNTRL_N_Pin */
+  GPIO_InitStruct.Pin = ARRIUS_0_PMBUS_CNTRL_N_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(ARRIUS_0_PMBUS_CNTRL_N_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : SFF_0_PERST_Pin */
+  GPIO_InitStruct.Pin = SFF_0_PERST_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  HAL_GPIO_Init(SFF_0_PERST_GPIO_Port, &GPIO_InitStruct);
+
   /*Configure GPIO pin : TRIGGER_MODE_Pin */
   GPIO_InitStruct.Pin = TRIGGER_MODE_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(TRIGGER_MODE_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : SFF_1_PERST_Pin */
+  GPIO_InitStruct.Pin = SFF_1_PERST_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  HAL_GPIO_Init(SFF_1_PERST_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : POWER_BTN_Pin */
   GPIO_InitStruct.Pin = POWER_BTN_Pin;
@@ -986,6 +1033,9 @@ static void MX_GPIO_Init(void)
 
   HAL_NVIC_SetPriority(EXTI2_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(EXTI2_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
 /* USER CODE END MX_GPIO_Init_2 */
@@ -1149,8 +1199,6 @@ void getBuildTime(uint8_t* hour8, uint8_t* min8, uint8_t* sec8) {
 void setFan0PWM(uint8_t dutyCycle) {
 	if(dutyCycle > 100)
 		dutyCycle = 100;
-	else if(dutyCycle < 33)
-		dutyCycle = 33;
 
 	__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_3, dutyCycle);
 }
@@ -1158,8 +1206,6 @@ void setFan0PWM(uint8_t dutyCycle) {
 void setFan1PWM(uint8_t dutyCycle) {
 	if(dutyCycle > 100)
 		dutyCycle = 100;
-	else if(dutyCycle < 33)
-		dutyCycle = 33;
 
 	__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_2, dutyCycle);
 }
@@ -1182,6 +1228,20 @@ void togglePower() {
 		//start power on cycle
 	}
 
+}
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
+	printf("SFF0 RST\n");
+	if(GPIO_Pin == GPIO_PIN_11) {
+		printf("SFF0 RST %d", HAL_GPIO_ReadPin(SFF_0_PERST_GPIO_Port, SFF_0_PERST_Pin));
+		HAL_GPIO_WritePin(ARRIUS_0_PCIE_PERST_N_OD_GPIO_Port, ARRIUS_0_PCIE_PERST_N_OD_Pin,
+							HAL_GPIO_ReadPin(SFF_0_PERST_GPIO_Port, SFF_0_PERST_Pin));
+	}
+	if(GPIO_Pin == GPIO_PIN_10) {
+		printf("SFF1 RST %d", HAL_GPIO_ReadPin(SFF_1_PERST_GPIO_Port, SFF_1_PERST_Pin));
+		HAL_GPIO_WritePin(ARRIUS_1_PCIE_PERST_N_OD_GPIO_Port, ARRIUS_1_PCIE_PERST_N_OD_Pin,
+							HAL_GPIO_ReadPin(SFF_1_PERST_GPIO_Port, SFF_1_PERST_Pin));
+	}
 }
 
 PUTCHAR_PROTOTYPE
