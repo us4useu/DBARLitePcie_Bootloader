@@ -52,6 +52,12 @@
 #define PWR_PWRDOWN		0x10
 #define PWR_PWRUP		0x11
 
+//I2C3 Master defines
+
+#define I2C3_WRREQ 0x05
+#define I2C3_RDREQ 0x06
+#define I2C3_WRRDREQ 0x07
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -100,6 +106,10 @@ uint32_t tempAmbient = 0;
 
 TIM_OC_InitTypeDef fan0PWMConf;
 TIM_OC_InitTypeDef fan1PWMConf;
+
+uint8_t i2cCmdPending = 0;
+
+uint8_t i2c3_rxBuf[4];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -123,7 +133,7 @@ void getBuildTime(uint8_t* hour8, uint8_t* min8, uint8_t* sec8);
 
 void triggerSelect(uint8_t trigSel);
 void sffSelect(uint8_t sffSel);
-void reflckSelect(uint8_t refSel);
+void refClkSelect(uint8_t refSel);
 
 /* USER CODE END PFP */
 
@@ -220,6 +230,8 @@ int main(void)
 
   pwrState = PWR_OFF;
 
+  i2cCmdPending = 0;
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -262,6 +274,76 @@ int main(void)
 	else if(pwrState == PWR_ON) {
 
 	}
+
+	/*
+	 * #define I2C3_WRREQ 0x05
+#define I2C3_RDREQ 0x06
+#define I2C3_WRRDREQ 0x07
+	 */
+
+	if(i2cCmdPending) {
+
+		//I2C3 MASTER PASSTHROUGH COMMANDS
+		if(regs.i2c.xferRequest == I2C3_WRREQ) {
+			HAL_StatusTypeDef i2c3_st;
+			uint8_t devAddr = regs.i2c.devAddr;
+			uint8_t txBuf;
+			uint8_t txSz = regs.i2c.length & 0x0F;
+			if(txSz  >4) { txSz = 4; }
+			memcpy(txBuf, regs.i2c.wrBuf, txSz);
+			regs.i2c.status |= 0x02;
+			i2c3_st = HAL_I2C_Master_Transmit_IT(&hi2c3, devAddr, txBuf, txSz);
+			if(i2c3_st = HAL_ERROR) {
+				regs.i2c.status |= 0x04;
+			}
+		}
+		else if(regs.i2c.xferRequest == I2C3_RDREQ) {
+			HAL_StatusTypeDef i2c3_st;
+			uint8_t devAddr = regs.i2c.devAddr;
+			uint8_t rxSz = (regs.i2c.length & 0xF0) >> 4;
+			if(rxSz  >4) { rxSz = 4; }
+			regs.i2c.status |= 0x02;
+			memset(i2c3_rxBuf, 0x00, 4);
+			i2c3_st = HAL_I2C_Master_Receive_IT(&hi2c3, devAddr, i2c3_rxBuf, rxSz);
+			if(i2c3_st = HAL_ERROR) {
+				regs.i2c.status |= 0x04;
+			}
+		}
+		else if(regs.i2c.xferRequest == I2C3_WRRDREQ) {
+			HAL_StatusTypeDef i2c3_st;
+			uint8_t devAddr = regs.i2c.devAddr;
+			uint8_t txBuf[2];
+			uint8_t txSz = regs.i2c.length & 0x0F;
+
+			if(txSz > 2) {
+				regs.i2c.status |= 0x04;
+			}
+			else {
+				memcpy(txBuf, regs.i2c.wrBuf, txSz);
+				uint16_t memAddr = 0;
+				if(txSz == 1) {
+					memAddr = (txBuf[0] << 1) + txBuf[1];
+				}
+				else if(txSz) {
+					memAddr = txBuf[0];
+				}
+
+				uint8_t rxSz = (regs.i2c.length & 0xF0) >> 4;
+				if(rxSz  >4) { rxSz = 4; }
+				regs.i2c.status |= 0x02;
+				memset(i2c3_rxBuf, 0x00, 4);
+				i2c3_st = HAL_I2C_Mem_Read_IT(&hi2c3, devAddr, memAddr, txSz, i2c3_rxBuf, rxSz);
+				if(i2c3_st = HAL_ERROR) {
+					regs.i2c.status |= 0x04;
+				}
+			}
+		}
+		//END I2C3 MASTER PASSTHROUGH COMMANDS
+
+		i2cCmdPending = 0;
+	}
+
+
 
     /* USER CODE END WHILE */
 
@@ -1104,6 +1186,18 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c) {
 	HAL_I2C_Slave_Seq_Receive_IT(hi2c, &rxBuffer[rxBufferPtr], 1, I2C_LAST_FRAME);
 }
 
+void ProcessI2cCmd(uint8_t* buf, uint8_t len) {
+	uint8_t offset = buf[0];
+	uint8_t* destAddress;
+	uint8_t* maskAddress;
+
+	for(uint8_t n = 0; n < (len-1); n++){
+		destAddress = (uint8_t*)&regs + offset + n;
+		maskAddress = (uint8_t*)&regsMask + offset + n;
+		*destAddress = (buf[n+1]&(*maskAddress));
+	}
+}
+
 void HAL_I2C_ListenCpltCallback(I2C_HandleTypeDef *hi2c) {
 	if(i2cSlvDest == I2CSLV_FLASH) {
 		memcpy(flashBuf + txFlashMemPtr, rxBuffer, (rxBufferPtr + 1));
@@ -1111,6 +1205,10 @@ void HAL_I2C_ListenCpltCallback(I2C_HandleTypeDef *hi2c) {
 	}
 	else if(i2cSlvDest == I2CSLV_CMD) {
 		//Process I2C command
+		if(rxBufferPtr>1) {
+			ProcessI2cCmd(rxBuffer, rxBufferPtr);
+			i2cCmdPending = 1;
+		}
 	}
 	HAL_I2C_EnableListen_IT(hi2c);
 }
@@ -1120,6 +1218,23 @@ void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c) {
 	{
 		printf("I2C Error\n");
 	}
+}
+
+void HAL_I2C_MasterTxCpltCallback(I2C_HandleTypeDef *hi2c) {
+	printf("I2C3 Master Tx Done\n");
+	regs.i2c.status = 0x00;
+}
+
+void HAL_I2C_MasterRxCpltCallback(I2C_HandleTypeDef *hi2c) {
+	printf("I2C3 Master Rx Done\n");
+	memcpy(regs.i2c.rdBuf, i2c3_rxBuf, 4);
+	regs.i2c.status = 0x00;
+}
+
+void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c) {
+	printf("I2C3 Master TxRx Done\n");
+	memcpy(regs.i2c.rdBuf, i2c3_rxBuf, 4);
+	regs.i2c.status = 0x00;
 }
 
 void triggerSelect(uint8_t trigSel) {
@@ -1144,7 +1259,7 @@ void sffSelect(uint8_t sffSel) {
 	}
 }
 
-void reflckSelect(uint8_t refSel) {
+void refClkSelect(uint8_t refSel) {
 	if(refSel == INTERNAL) {
 		//config LMK for XTAL clock reference
 		//TO DO
