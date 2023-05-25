@@ -42,7 +42,8 @@ typedef struct BootloaderRegs{
 	uint32_t flashOffset;
 	uint8_t	flashLock;
 	uint8_t flashLoad;
-	uint8_t res0[5];
+	uint8_t res0[4];
+	uint8_t softReset;
 	uint8_t keyCheck;
 	uint32_t key;
 }BootloaderRegs;

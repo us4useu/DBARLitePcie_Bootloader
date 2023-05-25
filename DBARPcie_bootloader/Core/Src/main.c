@@ -28,16 +28,17 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
+typedef  void (*pFunction)(void);
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define FW_VER	0xB1000000 //Bootloader version 1.0.0.0
+#define FW_VER	0x010000BB //Bootloader version 1.0.0.BB
 
 #define EXTERNAL 	0xF0
 #define INTERNAL	0x0F
 
+#define DTCM_RAM_BASEADDR 0x38000000 	//16KB RAM_D3
 #define FLASH_APP_BASEADDR 0x08020000 	//128KB application offset
 #define FLASH_APP_SZ 0x00020000 		//256KB application firmware size
 
@@ -128,6 +129,8 @@ static void MX_TIM2_Init(void);
 static void MX_I2C2_Init(void);
 /* USER CODE BEGIN PFP */
 
+uint8_t getDbarState();
+
 void getBuildDate(uint8_t* year8, uint8_t* month8, uint8_t* day8);
 void getBuildTime(uint8_t* hour8, uint8_t* min8, uint8_t* sec8);
 
@@ -139,7 +142,8 @@ void refClkSelect(uint8_t refSel);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
+pFunction Jump_To_Application;
+uint32_t JumpAddress;
 /* USER CODE END 0 */
 
 /**
@@ -168,7 +172,6 @@ int main(void)
   PeriphCommonClock_Config();
 
   /* USER CODE BEGIN SysInit */
-
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
@@ -186,13 +189,58 @@ int main(void)
   MX_I2C2_Init();
   /* USER CODE BEGIN 2 */
 
-  printf("DBARLitePcie Bootloader v1.0.0.0\n");
-  printf("Build ");
-  printf(__TIMESTAMP__);
-  printf("\n");
+  uint32_t* jumpCodePtr = (uint32_t*)DTCM_RAM_BASEADDR;
+  uint32_t jumpCode = 0xAA55AA55;// *jumpCodePtr;
+  uint32_t* p = (uint32_t*)FLASH_APP_BASEADDR;
+
+  /*
+   * if application memory is not programmed or user requested
+   * to flash application memory stay in bootloader
+   */
+  if((*p != 0xFFFFFFFF) && (jumpCode != 0xAA55AA55)) {
+
+	  /*GPIO_PinState pButton;
+	  pButton = !HAL_GPIO_ReadPin(POWER_BTN_GPIO_Port, POWER_BTN_Pin);
+	  uint32_t tickStart = HAL_GetTick();
+
+	  //If button is pressed during powerup for XX seconds stay in bootloader
+	  while(pButton && (HAL_GetTick() < (tickStart + 3000))) {
+		  pButton = !HAL_GPIO_ReadPin(POWER_BTN_GPIO_Port, POWER_BTN_Pin);
+	  }
+	  if(!pButton) {*/
+	  	  __HAL_RCC_GPIOA_CLK_DISABLE();
+	  	  __HAL_RCC_GPIOB_CLK_DISABLE();
+	  	  __HAL_RCC_GPIOC_CLK_DISABLE();
+	  	  __HAL_RCC_GPIOD_CLK_DISABLE();
+	  	  __HAL_RCC_GPIOE_CLK_DISABLE();
+	  	  __HAL_RCC_GPIOF_CLK_DISABLE();
+	  	  __HAL_RCC_GPIOG_CLK_DISABLE();
+	  	  __HAL_RCC_GPIOH_CLK_DISABLE();
+
+	  	  HAL_RCC_DeInit();
+	  	  HAL_DeInit();
+	  	  SysTick->CTRL = 0;
+	  	  SysTick->LOAD = 0;
+	  	  SysTick->VAL = 0;
+
+		  JumpAddress = *(__IO uint32_t *) (FLASH_APP_BASEADDR + 4);
+		  Jump_To_Application = (pFunction) JumpAddress;
+		  __set_MSP(*(__IO uint32_t*) FLASH_APP_BASEADDR);
+
+		  //HAL_DeInit();
+		  Jump_To_Application();
+		  while(1){}; //Should never get here
+	 // }
+  }
+
 
   ConfMem conf;
   ConfigMemory_Download(&conf);
+
+  printf("DBARLitePcie bootloader v1.0.0\n");
+  printf("Build ");
+  printf(__TIMESTAMP__);
+  printf("\n");
 
   memcpy((void*)(&regs), (void*)(&conf), 0x20); //copy serial number and hw info from config memory
 
@@ -240,6 +288,8 @@ int main(void)
 
   i2cCmdPending = 0;
 
+  regs.bootlader.softReset = 0;
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -285,27 +335,24 @@ int main(void)
 		//* OEM temp monitoring
 		//* I2C error recovery
 	}
+	else if(pwrState == PWR_OFF) {
 
-	/*
-	 * #define I2C3_WRREQ 0x05
-#define I2C3_RDREQ 0x06
-#define I2C3_WRRDREQ 0x07
-	 */
+	}
 
 	if(i2cCmdPending) {
 
 		//I2C3 MASTER PASSTHROUGH COMMANDS
 		if(regs.i2c.xferRequest == I2C3_WRREQ) {
-			printf("I2C3 write request \n");
 			HAL_StatusTypeDef i2c3_st;
 			uint8_t devAddr = regs.i2c.devAddr;
-			uint8_t txBuf;
+			uint8_t txBuf[4];
 			uint8_t txSz = regs.i2c.length & 0x0F;
 			if(txSz  >4) { txSz = 4; }
 			memcpy(txBuf, regs.i2c.wrBuf, txSz);
 			regs.i2c.status |= 0x02;
-			i2c3_st = HAL_I2C_Master_Transmit_IT(&hi2c3, devAddr, txBuf, txSz);
-			if(i2c3_st = HAL_ERROR) {
+			printf("I2C3 write request 0x%02X %d\n", devAddr, txSz);
+			i2c3_st = HAL_I2C_Master_Transmit_IT(&hi2c3, devAddr<<1, txBuf, txSz);
+			if(i2c3_st == HAL_ERROR) {
 				uint32_t err = HAL_I2C_GetError(&hi2c3);
 				printf("I2C3 write request error %08X\n", err);
 				regs.i2c.status |= 0x04;
@@ -313,17 +360,17 @@ int main(void)
 			regs.i2c.xferRequest &= ~0x04;
 		}
 		else if(regs.i2c.xferRequest == I2C3_RDREQ) {
-			printf("I2C3 read request \n");
 			HAL_StatusTypeDef i2c3_st;
 			uint8_t devAddr = regs.i2c.devAddr;
 			uint8_t rxSz = (regs.i2c.length & 0xF0) >> 4;
 			if(rxSz  >4) { rxSz = 4; }
 			regs.i2c.status |= 0x02;
 			memset(i2c3_rxBuf, 0x00, 4);
-			i2c3_st = HAL_I2C_Master_Receive_IT(&hi2c3, devAddr, i2c3_rxBuf, rxSz);
-			if(i2c3_st = HAL_ERROR) {
+			printf("I2C3 read request 0x%02X %d\n", devAddr, rxSz);
+			i2c3_st = HAL_I2C_Master_Receive_IT(&hi2c3, devAddr<<1, i2c3_rxBuf, rxSz);
+			if(i2c3_st == HAL_ERROR) {
 				uint32_t err = HAL_I2C_GetError(&hi2c3);
-				printf("I2C3 write request error %08X\n", err);
+				printf("I2C3 read request error %08X\n", err);
 				regs.i2c.status |= 0x04;
 			}
 			regs.i2c.xferRequest &= ~0x04;
@@ -334,17 +381,16 @@ int main(void)
 			uint8_t devAddr = regs.i2c.devAddr;
 			uint8_t txBuf[2];
 			uint8_t txSz = regs.i2c.length & 0x0F;
-
 			if(txSz > 2) {
 				regs.i2c.status |= 0x04;
 			}
 			else {
 				memcpy(txBuf, regs.i2c.wrBuf, txSz);
 				uint16_t memAddr = 0;
-				if(txSz == 1) {
-					memAddr = (txBuf[0] << 1) + txBuf[1];
+				if(txSz == 2) {
+					memAddr = (txBuf[0] << 8) + txBuf[1];
 				}
-				else if(txSz) {
+				else if(txSz == 1) {
 					memAddr = txBuf[0];
 				}
 
@@ -352,8 +398,9 @@ int main(void)
 				if(rxSz  >4) { rxSz = 4; }
 				regs.i2c.status |= 0x02;
 				memset(i2c3_rxBuf, 0x00, 4);
-				i2c3_st = HAL_I2C_Mem_Read_IT(&hi2c3, devAddr, memAddr, txSz, i2c3_rxBuf, rxSz);
-				if(i2c3_st = HAL_ERROR) {
+				printf("I2C3 write-read request 0x%02X 0x%02X %d %d\n", devAddr, memAddr, txSz, rxSz);
+				i2c3_st = HAL_I2C_Mem_Read_IT(&hi2c3, devAddr<<1, memAddr, txSz, i2c3_rxBuf, rxSz);
+				if(i2c3_st == HAL_ERROR) {
 					uint32_t err = HAL_I2C_GetError(&hi2c3);
 					printf("I2C3 write request error %08X\n", err);
 					regs.i2c.status |= 0x04;
@@ -362,6 +409,19 @@ int main(void)
 			regs.i2c.xferRequest &= ~0x04;
 		}
 		//END I2C3 MASTER PASSTHROUGH COMMANDS
+
+		//FLASH COMMANDS
+
+		//END FLASH COMMANDS
+
+		//OTHER COMMANDS
+
+		HAL_Delay(3000);
+		printf("Reset\n");
+		if(regs.bootlader.softReset == 0x55){
+			*jumpCodePtr = 0x00000000;
+			HAL_NVIC_SystemReset();
+		}
 
 		i2cCmdPending = 0;
 	}
@@ -1149,10 +1209,10 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 
 void HAL_I2C_AddrCallback(I2C_HandleTypeDef *hi2c, uint8_t TransferDirection, uint16_t AddrMatchCode) {
-	char dbg[6];
+	/*char dbg[6];
 	sprintf(dbg, "0x%04x", AddrMatchCode);
 	printf(dbg);
-	printf(" I2C Address detected\n");
+	printf(" I2C Address detected\n");*/
 
 	i2cSlvDest = AddrMatchCode; //CMD or FLASH
 
@@ -1182,13 +1242,13 @@ void HAL_I2C_AddrCallback(I2C_HandleTypeDef *hi2c, uint8_t TransferDirection, ui
 
 void HAL_I2C_SlaveTxCpltCallback(I2C_HandleTypeDef *hi2c) {
 	if(i2cSlvDest == I2CSLV_CMD) {
-		printf(" I2C cmd response sent\n");
+		//printf(" I2C cmd response sent\n");
 		//Only gets called if regs memory space rolls over, transmit regs from 0x00 offset
 		uint8_t* srcAddress = (uint8_t*)&regs;
 		HAL_I2C_Slave_Seq_Transmit_IT(hi2c, srcAddress, I2CSLV_REGS_SZ, I2C_NEXT_FRAME);
 	}
 	else if(i2cSlvDest == I2CSLV_FLASH) {
-		printf(" I2C flash buf response sent\n");
+		//printf(" I2C flash buf response sent\n");
 		i2cSlvTxSize = 256;
 		txFlashMemPtr += i2cSlvTxSize;
 		uint8_t* txPtr = flashBuf;
@@ -1202,7 +1262,7 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c) {
 	if(rxBufferPtr == 0 && i2cSlvDest == I2CSLV_CMD)
 		txBufferPtr = rxBuffer[0];
 
-	printf(" I2C received byte 0x%02X\n", rxBuffer[rxBufferPtr]);
+	//printf(" I2C received byte 0x%02X\n", rxBuffer[rxBufferPtr]);
 	if(	rxBufferPtr < 255) {
 		rxBufferPtr++;
 	}
@@ -1227,7 +1287,7 @@ void HAL_I2C_ListenCpltCallback(I2C_HandleTypeDef *hi2c) {
 		txFlashMemPtr += (rxBufferPtr + 1);
 	}
 	else if(i2cSlvDest == I2CSLV_CMD) {
-		printf(" I2C listen cplt\n");
+		//printf(" I2C listen cplt\n");
 		//Process I2C command
 		if(rxBufferPtr>1) {
 			ProcessI2cCmd(rxBuffer, rxBufferPtr);

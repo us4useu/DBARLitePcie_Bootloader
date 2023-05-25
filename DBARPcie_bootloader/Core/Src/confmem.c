@@ -16,6 +16,7 @@ void ConfigMemory_Download(ConfMem* conf) {
 	uint8_t res0 = *srcAddress;
 	if(res0 != 0xAA) {
 		printf("No saved configurations found in memory\n");
+		conf->boot = 0xAA; //stay in bootloader if no saved configs
 		return;
 	}
 
