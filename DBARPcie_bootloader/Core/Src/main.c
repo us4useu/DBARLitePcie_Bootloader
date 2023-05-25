@@ -43,8 +43,8 @@
 
 #define I2CSLV_RXBUF_SZ 	256
 
-#define I2CSLV_FLASH		0x22
-#define I2CSLV_CMD 			0x20
+#define I2CSLV_FLASH		(0x21 << 1)
+#define I2CSLV_CMD 			(0x20 << 1)
 
 //Power states
 #define PWR_OFF 		0
@@ -186,7 +186,7 @@ int main(void)
   MX_I2C2_Init();
   /* USER CODE BEGIN 2 */
 
-  printf("DBARLitePcie Bootloader\n");
+  printf("DBARLitePcie Bootloader v1.0.0.0\n");
   printf("Build ");
   printf(__TIMESTAMP__);
   printf("\n");
@@ -196,7 +196,16 @@ int main(void)
 
   memcpy((void*)(&regs), (void*)(&conf), 0x20); //copy serial number and hw info from config memory
 
+  //set info regs
+  regs.info.status = 0x80;
+  regs.info.hwRevision = 0x01;
+  regs.info.serial[0] = 23;
+  regs.info.serial[1] = 20;
+  regs.info.serial[2] = 03;
+  regs.info.hwVersion - 0x00;
   regs.info.fwVersion = FW_VER; //set firmware version
+  sprintf(regs.info.snString, "DBLP%02d%02d%02d%02d%02d", regs.info.hwRevision,
+		  regs.info.serial[0], regs.info.serial[1], regs.info.serial[2], regs.info.hwVersion);
   //set firmware build time
   getBuildDate(&(regs.info.buildYear), &(regs.info.buildMonth), &(regs.info.buildDay));
   getBuildTime(&(regs.info.buildHour), &(regs.info.buildMin), &(regs.info.buildSec));
@@ -217,14 +226,13 @@ int main(void)
   //Start listening on I2C2 (ARRIUS_0 i2c)
   HAL_I2C_EnableListen_IT(&hi2c2);
 
-  setFan0PWM(0);
-  setFan1PWM(0);
+  setFan0PWM(50);
+  setFan1PWM(50);
 
   uint8_t ds160_rx;
 
   HAL_GPIO_WritePin(ARRIUS_0_PCIE_PERST_N_OD_GPIO_Port, ARRIUS_0_PCIE_PERST_N_OD_Pin,
   							HAL_GPIO_ReadPin(SFF_0_PERST_GPIO_Port, SFF_0_PERST_Pin));
-
   HAL_GPIO_WritePin(ARRIUS_1_PCIE_PERST_N_OD_GPIO_Port, ARRIUS_1_PCIE_PERST_N_OD_Pin,
   							HAL_GPIO_ReadPin(SFF_1_PERST_GPIO_Port, SFF_1_PERST_Pin));
 
@@ -247,7 +255,7 @@ int main(void)
 		HAL_Delay(100);
 
 		lmk03328_enable();
-		HAL_Delay(10);
+		HAL_Delay(100);
 		lmk03328_init(&hi2c3);
 
 		ds160_enable();
@@ -264,15 +272,18 @@ int main(void)
 		lmk03328_disable();
 		ds160_disable();
 
-		setFan0PWM(0);
-		setFan1PWM(0);
+		setFan0PWM(50);
+		setFan1PWM(50);
 
 		pwrState = PWR_OFF;
 		setPowerLed(GPIO_PIN_RESET);
 		printf("POWER OFF \n");
 	}
 	else if(pwrState == PWR_ON) {
-
+		uint8_t rx;
+		rx = lmk03328_read(86);
+		//printf("reg 86 = 0x%02X\n", rx);
+		HAL_Delay(1000);
 	}
 
 	/*
@@ -458,10 +469,10 @@ static void MX_I2C1_Init(void)
   /* USER CODE END I2C1_Init 1 */
   hi2c1.Instance = I2C1;
   hi2c1.Init.Timing = 0x00401959;
-  hi2c1.Init.OwnAddress1 = 32;
+  hi2c1.Init.OwnAddress1 = I2CSLV_CMD;
   hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
   hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_ENABLE;
-  hi2c1.Init.OwnAddress2 = 34;
+  hi2c1.Init.OwnAddress2 = I2CSLV_FLASH;
   hi2c1.Init.OwnAddress2Masks = I2C_OA2_NOMASK;
   hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
   hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
@@ -506,10 +517,10 @@ static void MX_I2C2_Init(void)
   /* USER CODE END I2C2_Init 1 */
   hi2c2.Instance = I2C2;
   hi2c2.Init.Timing = 0x00401959;
-  hi2c2.Init.OwnAddress1 = 32;
+  hi2c2.Init.OwnAddress1 = I2CSLV_CMD;
   hi2c2.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
   hi2c2.Init.DualAddressMode = I2C_DUALADDRESS_ENABLE;
-  hi2c2.Init.OwnAddress2 = 34;
+  hi2c2.Init.OwnAddress2 = I2CSLV_FLASH;
   hi2c2.Init.OwnAddress2Masks = I2C_OA2_NOMASK;
   hi2c2.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
   hi2c2.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
@@ -1127,12 +1138,11 @@ static void MX_GPIO_Init(void)
 
 void HAL_I2C_AddrCallback(I2C_HandleTypeDef *hi2c, uint8_t TransferDirection, uint16_t AddrMatchCode) {
 
-#ifdef UART_DBG
+
 	char dbg[6];
 	sprintf(dbg, "0x%04x", AddrMatchCode);
 	printf(dbg);
 	printf(" I2C Address detected\n");
-#endif
 
 	i2cSlvDest = AddrMatchCode; //CMD or FLASH
 
@@ -1148,7 +1158,8 @@ void HAL_I2C_AddrCallback(I2C_HandleTypeDef *hi2c, uint8_t TransferDirection, ui
 		if(i2cSlvDest == I2CSLV_CMD) {
 			uint8_t* srcAddress;
 			srcAddress = (uint8_t*)&regs + txBufferPtr;
-			i2cSlvTxSize = (0x50-txBufferPtr);
+			i2cSlvTxSize = (I2CSLV_REGS_SZ-txBufferPtr);
+			printf(" I2C response offset = %x, size = %d\n", srcAddress, i2cSlvTxSize);
 			HAL_I2C_Slave_Seq_Transmit_IT(hi2c, srcAddress, i2cSlvTxSize , I2C_NEXT_FRAME);
 		}
 		else if(i2cSlvDest == I2CSLV_FLASH) {
@@ -1161,11 +1172,13 @@ void HAL_I2C_AddrCallback(I2C_HandleTypeDef *hi2c, uint8_t TransferDirection, ui
 
 void HAL_I2C_SlaveTxCpltCallback(I2C_HandleTypeDef *hi2c) {
 	if(i2cSlvDest == I2CSLV_CMD) {
+		printf(" I2C cmd response sent\n");
 		//Only gets called if regs memory space rolls over, transmit regs from 0x00 offset
 		uint8_t* srcAddress = (uint8_t*)&regs;
-		HAL_I2C_Slave_Seq_Transmit_IT(hi2c, srcAddress, 0x50, I2C_NEXT_FRAME);
+		HAL_I2C_Slave_Seq_Transmit_IT(hi2c, srcAddress, I2CSLV_REGS_SZ, I2C_NEXT_FRAME);
 	}
 	else if(i2cSlvDest == I2CSLV_FLASH) {
+		printf(" I2C flash buf response sent\n");
 		i2cSlvTxSize = 256;
 		txFlashMemPtr += i2cSlvTxSize;
 		uint8_t* txPtr = flashBuf;
@@ -1179,10 +1192,10 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c) {
 	if(rxBufferPtr == 0 && i2cSlvDest == I2CSLV_CMD)
 		txBufferPtr = rxBuffer[0];
 
+	printf(" I2C received byte 0x%02X\n", rxBuffer[rxBufferPtr]);
 	if(	rxBufferPtr < 255) {
 		rxBufferPtr++;
 	}
-
 	HAL_I2C_Slave_Seq_Receive_IT(hi2c, &rxBuffer[rxBufferPtr], 1, I2C_LAST_FRAME);
 }
 
@@ -1204,6 +1217,7 @@ void HAL_I2C_ListenCpltCallback(I2C_HandleTypeDef *hi2c) {
 		txFlashMemPtr += (rxBufferPtr + 1);
 	}
 	else if(i2cSlvDest == I2CSLV_CMD) {
+		printf(" I2C listen cplt\n");
 		//Process I2C command
 		if(rxBufferPtr>1) {
 			ProcessI2cCmd(rxBuffer, rxBufferPtr);
@@ -1214,9 +1228,13 @@ void HAL_I2C_ListenCpltCallback(I2C_HandleTypeDef *hi2c) {
 }
 
 void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c) {
-	if( HAL_I2C_GetError(hi2c) != HAL_I2C_ERROR_AF ) //Transaction terminated by master - don't care
+	uint32_t err = HAL_I2C_GetError(hi2c);
+	if( err != HAL_I2C_ERROR_AF ) //Transaction terminated by master - don't care
 	{
-		printf("I2C Error\n");
+		printf("I2C Error %X\n", err);
+	}
+	else {
+		printf("I2C Error AF\n");
 	}
 }
 
@@ -1346,14 +1364,13 @@ void togglePower() {
 }
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
-	printf("SFF0 RST\n");
 	if(GPIO_Pin == GPIO_PIN_11) {
-		printf("SFF0 RST %d", HAL_GPIO_ReadPin(SFF_0_PERST_GPIO_Port, SFF_0_PERST_Pin));
+		printf("SFF0 RST %d\n", HAL_GPIO_ReadPin(SFF_0_PERST_GPIO_Port, SFF_0_PERST_Pin));
 		HAL_GPIO_WritePin(ARRIUS_0_PCIE_PERST_N_OD_GPIO_Port, ARRIUS_0_PCIE_PERST_N_OD_Pin,
 							HAL_GPIO_ReadPin(SFF_0_PERST_GPIO_Port, SFF_0_PERST_Pin));
 	}
 	if(GPIO_Pin == GPIO_PIN_10) {
-		printf("SFF1 RST %d", HAL_GPIO_ReadPin(SFF_1_PERST_GPIO_Port, SFF_1_PERST_Pin));
+		printf("SFF1 RST %d\n", HAL_GPIO_ReadPin(SFF_1_PERST_GPIO_Port, SFF_1_PERST_Pin));
 		HAL_GPIO_WritePin(ARRIUS_1_PCIE_PERST_N_OD_GPIO_Port, ARRIUS_1_PCIE_PERST_N_OD_Pin,
 							HAL_GPIO_ReadPin(SFF_1_PERST_GPIO_Port, SFF_1_PERST_Pin));
 	}

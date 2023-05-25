@@ -27,14 +27,14 @@ typedef struct InfoRegs{
 	uint8_t status;
 	uint8_t serial[3];
 	uint32_t fwVersion;
+	uint8_t hwVersion;
+	uint8_t hwRevision;
 	uint8_t buildYear;
 	uint8_t buildMonth;
 	uint8_t buildDay;
 	uint8_t buildHour;
 	uint8_t buildMin;
 	uint8_t buildSec;
-	uint8_t hwRevision;
-	uint8_t hwVersion;
 	char snString[16];
 }InfoRegs;
 
