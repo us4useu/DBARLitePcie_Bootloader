@@ -43,12 +43,6 @@ void lmk03328_init(I2C_HandleTypeDef *hi2c){
 	lmk03328_write(172, lmk_conf[147]);
 	lmk03328_write(173, lmk_conf[148]);
 
-	uint8_t rx;
-	for(uint8_t n = 0; n < (LMK_REGS_SZ - 3); n++) {
-		rx = lmk03328_read(n);
-		printf("LMK03328 reg[%d] = 0x%02X / 0x%02X\n", n, rx, lmk_conf[n]);
-	}
-
 	lmk03328_write(12, 0x52);
 	HAL_Delay(1);
 	lmk03328_write(12, 0xd2);
