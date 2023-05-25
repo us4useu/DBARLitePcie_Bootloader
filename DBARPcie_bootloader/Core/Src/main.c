@@ -255,12 +255,12 @@ int main(void)
 		HAL_Delay(100);
 
 		lmk03328_enable();
-		HAL_Delay(100);
+		HAL_Delay(10);
 		lmk03328_init(&hi2c3);
 
 		ds160_enable();
 		ds160_init(&hi2c3, EXTERNAL);
-		HAL_Delay(100);
+		HAL_Delay(10);
 
 		pwrState = PWR_ON;
 		setPowerLed(GPIO_PIN_SET);
@@ -280,10 +280,10 @@ int main(void)
 		printf("POWER OFF \n");
 	}
 	else if(pwrState == PWR_ON) {
-		uint8_t rx;
-		rx = lmk03328_read(86);
-		//printf("reg 86 = 0x%02X\n", rx);
-		HAL_Delay(1000);
+		//TO DO
+		//* FANS PWM control
+		//* OEM temp monitoring
+		//* I2C error recovery
 	}
 
 	/*
@@ -296,6 +296,7 @@ int main(void)
 
 		//I2C3 MASTER PASSTHROUGH COMMANDS
 		if(regs.i2c.xferRequest == I2C3_WRREQ) {
+			printf("I2C3 write request \n");
 			HAL_StatusTypeDef i2c3_st;
 			uint8_t devAddr = regs.i2c.devAddr;
 			uint8_t txBuf;
@@ -305,10 +306,14 @@ int main(void)
 			regs.i2c.status |= 0x02;
 			i2c3_st = HAL_I2C_Master_Transmit_IT(&hi2c3, devAddr, txBuf, txSz);
 			if(i2c3_st = HAL_ERROR) {
+				uint32_t err = HAL_I2C_GetError(&hi2c3);
+				printf("I2C3 write request error %08X\n", err);
 				regs.i2c.status |= 0x04;
 			}
+			regs.i2c.xferRequest &= ~0x04;
 		}
 		else if(regs.i2c.xferRequest == I2C3_RDREQ) {
+			printf("I2C3 read request \n");
 			HAL_StatusTypeDef i2c3_st;
 			uint8_t devAddr = regs.i2c.devAddr;
 			uint8_t rxSz = (regs.i2c.length & 0xF0) >> 4;
@@ -317,10 +322,14 @@ int main(void)
 			memset(i2c3_rxBuf, 0x00, 4);
 			i2c3_st = HAL_I2C_Master_Receive_IT(&hi2c3, devAddr, i2c3_rxBuf, rxSz);
 			if(i2c3_st = HAL_ERROR) {
+				uint32_t err = HAL_I2C_GetError(&hi2c3);
+				printf("I2C3 write request error %08X\n", err);
 				regs.i2c.status |= 0x04;
 			}
+			regs.i2c.xferRequest &= ~0x04;
 		}
 		else if(regs.i2c.xferRequest == I2C3_WRRDREQ) {
+			printf("I2C3 write-read request \n");
 			HAL_StatusTypeDef i2c3_st;
 			uint8_t devAddr = regs.i2c.devAddr;
 			uint8_t txBuf[2];
@@ -345,9 +354,12 @@ int main(void)
 				memset(i2c3_rxBuf, 0x00, 4);
 				i2c3_st = HAL_I2C_Mem_Read_IT(&hi2c3, devAddr, memAddr, txSz, i2c3_rxBuf, rxSz);
 				if(i2c3_st = HAL_ERROR) {
+					uint32_t err = HAL_I2C_GetError(&hi2c3);
+					printf("I2C3 write request error %08X\n", err);
 					regs.i2c.status |= 0x04;
 				}
 			}
+			regs.i2c.xferRequest &= ~0x04;
 		}
 		//END I2C3 MASTER PASSTHROUGH COMMANDS
 
@@ -1137,8 +1149,6 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 
 void HAL_I2C_AddrCallback(I2C_HandleTypeDef *hi2c, uint8_t TransferDirection, uint16_t AddrMatchCode) {
-
-
 	char dbg[6];
 	sprintf(dbg, "0x%04x", AddrMatchCode);
 	printf(dbg);
@@ -1159,7 +1169,7 @@ void HAL_I2C_AddrCallback(I2C_HandleTypeDef *hi2c, uint8_t TransferDirection, ui
 			uint8_t* srcAddress;
 			srcAddress = (uint8_t*)&regs + txBufferPtr;
 			i2cSlvTxSize = (I2CSLV_REGS_SZ-txBufferPtr);
-			printf(" I2C response offset = %x, size = %d\n", srcAddress, i2cSlvTxSize);
+			//printf(" I2C response offset = %x, size = %d\n", srcAddress, i2cSlvTxSize);
 			HAL_I2C_Slave_Seq_Transmit_IT(hi2c, srcAddress, i2cSlvTxSize , I2C_NEXT_FRAME);
 		}
 		else if(i2cSlvDest == I2CSLV_FLASH) {
@@ -1229,12 +1239,8 @@ void HAL_I2C_ListenCpltCallback(I2C_HandleTypeDef *hi2c) {
 
 void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c) {
 	uint32_t err = HAL_I2C_GetError(hi2c);
-	if( err != HAL_I2C_ERROR_AF ) //Transaction terminated by master - don't care
-	{
+	if( err != HAL_I2C_ERROR_AF ) { //Transaction terminated by master - don't care
 		printf("I2C Error %X\n", err);
-	}
-	else {
-		printf("I2C Error AF\n");
 	}
 }
 
@@ -1365,12 +1371,12 @@ void togglePower() {
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 	if(GPIO_Pin == GPIO_PIN_11) {
-		printf("SFF0 RST %d\n", HAL_GPIO_ReadPin(SFF_0_PERST_GPIO_Port, SFF_0_PERST_Pin));
+		//printf("SFF0 RST %d\n", HAL_GPIO_ReadPin(SFF_0_PERST_GPIO_Port, SFF_0_PERST_Pin));
 		HAL_GPIO_WritePin(ARRIUS_0_PCIE_PERST_N_OD_GPIO_Port, ARRIUS_0_PCIE_PERST_N_OD_Pin,
 							HAL_GPIO_ReadPin(SFF_0_PERST_GPIO_Port, SFF_0_PERST_Pin));
 	}
 	if(GPIO_Pin == GPIO_PIN_10) {
-		printf("SFF1 RST %d\n", HAL_GPIO_ReadPin(SFF_1_PERST_GPIO_Port, SFF_1_PERST_Pin));
+		//printf("SFF1 RST %d\n", HAL_GPIO_ReadPin(SFF_1_PERST_GPIO_Port, SFF_1_PERST_Pin));
 		HAL_GPIO_WritePin(ARRIUS_1_PCIE_PERST_N_OD_GPIO_Port, ARRIUS_1_PCIE_PERST_N_OD_Pin,
 							HAL_GPIO_ReadPin(SFF_1_PERST_GPIO_Port, SFF_1_PERST_Pin));
 	}

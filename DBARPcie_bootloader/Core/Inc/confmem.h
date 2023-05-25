@@ -13,9 +13,9 @@
 typedef struct ConfMem {
 	uint8_t res0;
 	uint8_t serial[3];
-	uint8_t res1[10];
-	uint8_t hwRevision;
 	uint8_t hwVersion;
+	uint8_t hwRevision;
+	uint8_t res1[10];
 	char snString[16];
 }ConfMem;
 

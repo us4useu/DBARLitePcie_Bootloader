@@ -10,7 +10,27 @@
 void ConfigMemory_Download(ConfMem* conf) {
 
 	uint8_t* destAddress = (uint8_t*)conf;
-	memcpy(destAddress, (uint8_t*)CONF_MEM_BASEADDR, (size_t)CONF_MEM_SZ);
+	//find last saved config
+	uint8_t* srcAddress = (uint8_t*)CONF_MEM_BASEADDR;
+
+	uint8_t res0 = *srcAddress;
+	if(res0 != 0xAA) {
+		printf("No saved configurations found in memory\n");
+		return;
+	}
+
+	uint8_t* nextAddress = srcAddress + sizeof(conf);
+	res0 = *nextAddress;
+
+	while(res0 == 0xAA) {
+		srcAddress += sizeof(conf);
+		nextAddress = srcAddress + sizeof(conf);
+		res0 = *nextAddress;
+	}
+
+	printf("Found config @0x%08X\n", srcAddress);
+
+	memcpy(destAddress, srcAddress, (size_t)CONF_MEM_SZ);
 }
 
 void ConfigMemory_Upload(ConfMem* conf) {
