@@ -7,35 +7,7 @@
 
 #include "confmem.h"
 
-void ConfigMemory_Download(ConfMem* conf) {
-
-	uint8_t* destAddress = (uint8_t*)conf;
-	//find last saved config
-	uint8_t* srcAddress = (uint8_t*)CONF_MEM_BASEADDR;
-
-	uint8_t res0 = *srcAddress;
-	if(res0 != 0xAA) {
-		printf("No saved configurations found in memory\n");
-		conf->boot = 0xAA; //stay in bootloader if no saved configs
-		return;
-	}
-
-	uint8_t* nextAddress = srcAddress + sizeof(conf);
-	res0 = *nextAddress;
-
-	while(res0 == 0xAA) {
-		srcAddress += sizeof(conf);
-		nextAddress = srcAddress + sizeof(conf);
-		res0 = *nextAddress;
-	}
-
-	printf("Found config @0x%08X\n", srcAddress);
-
-	memcpy(destAddress, srcAddress, (size_t)CONF_MEM_SZ);
-}
-
-void ConfigMemory_Upload(ConfMem* conf) {
-	HAL_StatusTypeDef st;
+void ConfigMemory_Erase() {
 	FLASH_EraseInitTypeDef FLASH_EraseInitStruct;
 
 	FLASH_EraseInitStruct.TypeErase = FLASH_TYPEERASE_SECTORS; 	//Erase type set to erase pages( Available other type is mass erase)
@@ -46,24 +18,71 @@ void ConfigMemory_Upload(ConfMem* conf) {
 	uint32_t  errorStatus = 0;
 	HAL_FLASH_Unlock();
 	HAL_FLASHEx_Erase(&FLASH_EraseInitStruct, &errorStatus);
+	HAL_FLASH_Lock();
+}
+
+void ConfigMemory_Download(ConfMem* conf) {
+
+	uint8_t* destAddress = (uint8_t*)conf;
+	//find last saved config
+	uint8_t* srcAddress = (uint8_t*)CONF_MEM_BASEADDR;
+
+	uint8_t res0 = *srcAddress;
+	if(res0 != 0xAA) {
+		printf("No saved configurations found in memory\n");
+		//conf->boot = 0xAA; //stay in bootloader if no saved configs
+		return;
+	}
+
+	uint8_t* nextAddress = srcAddress + CONF_MEM_SZ;
+	res0 = *nextAddress;
+
+	while(res0 == 0xAA && srcAddress < (FLASH_END - CONF_MEM_SZ)) {
+		srcAddress += CONF_MEM_SZ;
+		nextAddress = srcAddress + CONF_MEM_SZ;
+		res0 = *nextAddress;
+	}
+
+	printf("Found config @0x%08X\n", srcAddress);
+
+	memcpy(destAddress, srcAddress, (size_t)CONF_MEM_SZ);
+}
+
+void ConfigMemory_Upload(ConfMem* conf) {
+
 	uint8_t* srcAddress;
 	uint32_t ptr = 0;
 
-	while(ptr < CONF_MEM_SZ) {
-		srcAddress = (uint8_t*)conf + ptr;
-		st = HAL_FLASH_Program(FLASH_TYPEPROGRAM_FLASHWORD, (uint32_t)(CONF_MEM_BASEADDR+ptr), (uint32_t)(srcAddress));
-		if(st!=HAL_OK) {
-			printf("Flash write error\n");
-			uint32_t err = HAL_FLASH_GetError();
-			char dbg[12];
-			sprintf(dbg, "0x%08x\n", err);
-			printf(dbg);
+	uint32_t* destAddress = CONF_MEM_BASEADDR;
+	uint8_t res0 = *destAddress;
 
-		}
-		ptr+=(4*FLASH_NB_32BITWORD_IN_FLASHWORD);
+	//find address without watermark written
+	while(res0 == 0xAA && destAddress < (FLASH_END - CONF_MEM_SZ)) {
+		destAddress += CONF_MEM_SZ;
+		res0 = *destAddress;
 	}
 
-	HAL_FLASH_Lock();
+	//if whole memory used, erase and start over
+	if(res0 == 0xAA) {
+		ConfigMemory_Erase();
+		destAddress = CONF_MEM_BASEADDR;
+	}
+
+	HAL_StatusTypeDef st;
+
+	while(ptr < CONF_MEM_SZ) {
+		srcAddress = (uint8_t*)conf + ptr;
+		HAL_FLASH_Unlock();
+		st = HAL_FLASH_Program(FLASH_TYPEPROGRAM_FLASHWORD, (uint32_t)(destAddress + ptr), (uint32_t)(srcAddress));
+		HAL_FLASH_Lock();
+		if(st!=HAL_OK) {
+			uint32_t err = HAL_FLASH_GetError();
+			printf("Flash write error 0x%08X\n", err);
+		}
+		ptr += (4*FLASH_NB_32BITWORD_IN_FLASHWORD);
+	}
+
+	printf("Saved configuration @\n");
 
 }
 

@@ -28,7 +28,13 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-typedef  void (*pFunction)(void);
+typedef void (application_t)(void);
+typedef struct
+{
+    uint32_t		stack_addr;     // Stack Pointer
+    application_t*	func_p;        // Program Counter
+} JumpStruct;
+
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -39,8 +45,10 @@ typedef  void (*pFunction)(void);
 #define INTERNAL	0x0F
 
 #define DTCM_RAM_BASEADDR 0x38000000 	//16KB RAM_D3
-#define FLASH_APP_BASEADDR 0x08020000 	//128KB application offset
-#define FLASH_APP_SZ 0x00020000 		//256KB application firmware size
+#define FLASH_APP_BASEADDR 0x08040000 	//128KB application offset
+#define FLASH_BUF_BASEADDR 0x08080000 	//128KB application offset
+#define FLASH_APP_SZ 0x00020000 		//128KB application firmware size
+#define BL_KEY 0xFEEBDAED
 
 #define I2CSLV_RXBUF_SZ 	256
 
@@ -54,7 +62,6 @@ typedef  void (*pFunction)(void);
 #define PWR_PWRUP		0x11
 
 //I2C3 Master defines
-
 #define I2C3_WRREQ 0x05
 #define I2C3_RDREQ 0x06
 #define I2C3_WRRDREQ 0x07
@@ -138,12 +145,14 @@ void triggerSelect(uint8_t trigSel);
 void sffSelect(uint8_t sffSel);
 void refClkSelect(uint8_t refSel);
 
+void EraseFlash(uint8_t sector);
+void ProgramFlash(uint8_t sector, size_t size);
 /* USER CODE END PFP */
+
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-pFunction Jump_To_Application;
-uint32_t JumpAddress;
+
 /* USER CODE END 0 */
 
 /**
@@ -172,25 +181,9 @@ int main(void)
   PeriphCommonClock_Config();
 
   /* USER CODE BEGIN SysInit */
-  /* USER CODE END SysInit */
-
-  /* Initialize all configured peripherals */
-  MX_GPIO_Init();
-  MX_I2C3_Init();
-  MX_I2C4_Init();
-  MX_I2C5_Init();
-  MX_TIM1_Init();
-  MX_TIM3_Init();
-  MX_TIM5_Init();
-  MX_USART2_UART_Init();
-  MX_I2C1_Init();
-  MX_USB_DEVICE_Init();
-  MX_TIM2_Init();
-  MX_I2C2_Init();
-  /* USER CODE BEGIN 2 */
 
   uint32_t* jumpCodePtr = (uint32_t*)DTCM_RAM_BASEADDR;
-  uint32_t jumpCode = 0xAA55AA55;// *jumpCodePtr;
+  uint32_t jumpCode = *jumpCodePtr;
   uint32_t* p = (uint32_t*)FLASH_APP_BASEADDR;
 
   /*
@@ -223,16 +216,29 @@ int main(void)
 	  	  SysTick->LOAD = 0;
 	  	  SysTick->VAL = 0;
 
-		  JumpAddress = *(__IO uint32_t *) (FLASH_APP_BASEADDR + 4);
-		  Jump_To_Application = (pFunction) JumpAddress;
-		  __set_MSP(*(__IO uint32_t*) FLASH_APP_BASEADDR);
+	  	  const JumpStruct* vector_p = (JumpStruct*)FLASH_APP_BASEADDR;
+	  	  asm("msr msp, %0; bx %1;" : : "r"(vector_p->stack_addr), "r"(vector_p->func_p));
 
-		  //HAL_DeInit();
-		  Jump_To_Application();
 		  while(1){}; //Should never get here
 	 // }
   }
 
+  /* USER CODE END SysInit */
+
+  /* Initialize all configured peripherals */
+  MX_GPIO_Init();
+  MX_I2C3_Init();
+  MX_I2C4_Init();
+  MX_I2C5_Init();
+  MX_TIM1_Init();
+  MX_TIM3_Init();
+  MX_TIM5_Init();
+  MX_USART2_UART_Init();
+  MX_I2C1_Init();
+  MX_USB_DEVICE_Init();
+  MX_TIM2_Init();
+  MX_I2C2_Init();
+  /* USER CODE BEGIN 2 */
 
   ConfMem conf;
   ConfigMemory_Download(&conf);
@@ -258,12 +264,19 @@ int main(void)
   getBuildDate(&(regs.info.buildYear), &(regs.info.buildMonth), &(regs.info.buildDay));
   getBuildTime(&(regs.info.buildHour), &(regs.info.buildMin), &(regs.info.buildSec));
 
+  //set config regs
   uint8_t confMemPtr = 0;
   regs.config.AddrOffset = confMemPtr;
   regs.config.Control = 0;
   uint8_t* srcAddress = (uint8_t*)&conf + confMemPtr;
   regs.config.Value = *srcAddress;
 
+  //set bootloader regs
+  regs.bootlader.flashOffset = txFlashMemPtr;
+  regs.bootlader.flashCmd = 0x00;
+  regs.bootlader.key = 0;
+  regs.bootlader.keyCheck = 0x00;
+  regs.bootlader.softReset = 0x00;
   cdcun1208_init(&hi2c3);
 
   //clear flash RAM buffer
@@ -287,8 +300,6 @@ int main(void)
   pwrState = PWR_OFF;
 
   i2cCmdPending = 0;
-
-  regs.bootlader.softReset = 0;
 
   /* USER CODE END 2 */
 
@@ -318,6 +329,9 @@ int main(void)
 	}
 	else if(pwrState == PWR_PWRDOWN) {
 		//start power down sequence
+		regs.bootlader.key = 0;
+		regs.bootlader.keyCheck = 0x00;
+
 		HAL_GPIO_WritePin(ARRIUS_0_PMBUS_CNTRL_N_GPIO_Port, ARRIUS_0_PMBUS_CNTRL_N_Pin, GPIO_PIN_RESET);
 		lmk03328_disable();
 		ds160_disable();
@@ -376,7 +390,6 @@ int main(void)
 			regs.i2c.xferRequest &= ~0x04;
 		}
 		else if(regs.i2c.xferRequest == I2C3_WRRDREQ) {
-			printf("I2C3 write-read request \n");
 			HAL_StatusTypeDef i2c3_st;
 			uint8_t devAddr = regs.i2c.devAddr;
 			uint8_t txBuf[2];
@@ -410,16 +423,43 @@ int main(void)
 		}
 		//END I2C3 MASTER PASSTHROUGH COMMANDS
 
-		//FLASH COMMANDS
+		//BL/FLASH COMMANDS
+		if(regs.bootlader.flashOffset != txFlashMemPtr) {
+			txFlashMemPtr = regs.bootlader.flashOffset;
+			printf("Set flash offset pointer = 0x%08X\n", txFlashMemPtr);
+		}
+		if(regs.bootlader.keyCheck == 0x00) {
+			if(regs.bootlader.key == BL_KEY) {
+				regs.bootlader.keyCheck = 0x01; // unlock bootloader if key is valid
+				printf("Bootloader unlocked\n");
+			}
+		}
+		else {
+			//key valid, process bootloader commands
+			if(regs.bootlader.flashCmd & 0x40){ // flash erase
+				uint8_t sector = regs.bootlader.flashCmd & 0x01;
+				printf("Erase flash sector %d\n", sector);
+				EraseFlash(sector);
+				regs.bootlader.flashCmd &= ~ 0x40;
+			}
+			if(regs.bootlader.flashCmd & 0x80){ // flash load
+				uint8_t sector = regs.bootlader.flashCmd & 0x01;
+				uint32_t size = txFlashMemPtr;
+				printf("Copy &d bytes to flash sector %d\n", txFlashMemPtr, sector);
+				ProgramFlash(sector, size);
+				regs.bootlader.flashCmd &= ~ 0x80;
+			}
+		}
+
 
 		//END FLASH COMMANDS
 
 		//OTHER COMMANDS
 
-		HAL_Delay(3000);
-		printf("Reset\n");
 		if(regs.bootlader.softReset == 0x55){
-			*jumpCodePtr = 0x00000000;
+			printf("Reset\n");
+			HAL_Delay(1000);
+			//*jumpCodePtr = 0x00000000;
 			HAL_NVIC_SystemReset();
 		}
 
@@ -1219,7 +1259,7 @@ void HAL_I2C_AddrCallback(I2C_HandleTypeDef *hi2c, uint8_t TransferDirection, ui
 	rxBufferPtr = 0;
 
 	uint8_t* txPtr = flashBuf;
-	txPtr+=txFlashMemPtr;
+	txPtr += txFlashMemPtr;
 
 	if(TransferDirection == I2C_DIRECTION_TRANSMIT) {
 		HAL_I2C_Slave_Seq_Receive_IT(hi2c, rxBuffer, 1, I2C_NEXT_FRAME);
@@ -1251,6 +1291,7 @@ void HAL_I2C_SlaveTxCpltCallback(I2C_HandleTypeDef *hi2c) {
 		//printf(" I2C flash buf response sent\n");
 		i2cSlvTxSize = 256;
 		txFlashMemPtr += i2cSlvTxSize;
+		regs.bootlader.flashOffset = txFlashMemPtr;
 		uint8_t* txPtr = flashBuf;
 		txPtr += txFlashMemPtr;
 		HAL_I2C_Slave_Seq_Transmit_IT(hi2c, txPtr, i2cSlvTxSize, I2C_NEXT_FRAME);
@@ -1283,8 +1324,9 @@ void ProcessI2cCmd(uint8_t* buf, uint8_t len) {
 
 void HAL_I2C_ListenCpltCallback(I2C_HandleTypeDef *hi2c) {
 	if(i2cSlvDest == I2CSLV_FLASH) {
-		memcpy(flashBuf + txFlashMemPtr, rxBuffer, (rxBufferPtr + 1));
-		txFlashMemPtr += (rxBufferPtr + 1);
+		memcpy(flashBuf + txFlashMemPtr, rxBuffer, rxBufferPtr);
+		txFlashMemPtr += rxBufferPtr;
+		regs.bootlader.flashOffset = txFlashMemPtr;
 	}
 	else if(i2cSlvDest == I2CSLV_CMD) {
 		//printf(" I2C listen cplt\n");
@@ -1440,6 +1482,48 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 		HAL_GPIO_WritePin(ARRIUS_1_PCIE_PERST_N_OD_GPIO_Port, ARRIUS_1_PCIE_PERST_N_OD_Pin,
 							HAL_GPIO_ReadPin(SFF_1_PERST_GPIO_Port, SFF_1_PERST_Pin));
 	}
+}
+
+void EraseFlash(uint8_t sector) {
+	FLASH_EraseInitTypeDef FLASH_EraseInitStruct = {0};
+
+	FLASH_EraseInitStruct.TypeErase = FLASH_TYPEERASE_SECTORS;    //Erase type set to erase pages( Available other type is mass erase)
+	FLASH_EraseInitStruct.Banks = FLASH_BANK_1;
+	FLASH_EraseInitStruct.Sector = FLASH_SECTOR_2 + sector;            //Starting address of flash page (0x0800 0000 - 0x0801 FC00)
+	FLASH_EraseInitStruct.NbSectors = 1;                    	//Firmware size max 128KB
+
+	uint32_t  errorStatus = 0;
+
+	printf("Erasing Flash... ");
+	HAL_FLASHEx_Erase(&FLASH_EraseInitStruct,&errorStatus);
+	printf("Done\n");
+}
+
+void ProgramFlash(uint8_t sector, size_t size) {
+	if(sector > 1) {
+		printf("Error programing flash - Invalid flash sector\n");
+		return;
+	}
+
+	uint32_t ptr = 0;
+	HAL_StatusTypeDef st;
+
+	printf("Writing Flash...");
+
+	HAL_FLASH_Unlock();
+	EraseFlash(sector);
+
+	while(ptr < size) {
+		st = HAL_FLASH_Program(FLASH_TYPEPROGRAM_FLASHWORD, (uint32_t)(FLASH_BUF_BASEADDR+ptr), (uint32_t)(flashBuf+ptr));
+		if(st!=HAL_OK) {
+			uint32_t err = HAL_FLASH_GetError();
+			printf("Flash write error 0x%08x\n", err);
+		}
+		ptr+=(4*FLASH_NB_32BITWORD_IN_FLASHWORD);
+	}
+
+	HAL_FLASH_Lock();
+	printf("Done\n");
 }
 
 PUTCHAR_PROTOTYPE

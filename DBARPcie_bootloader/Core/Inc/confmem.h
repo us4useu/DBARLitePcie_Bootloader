@@ -13,10 +13,10 @@
 typedef struct ConfMem {
 	uint8_t res0;
 	uint8_t serial[3];
+	uint8_t res1[4];
 	uint8_t hwVersion;
 	uint8_t hwRevision;
-	uint8_t res1[9];
-	uint8_t boot;
+	uint8_t res2[6];
 	char snString[16];
 }ConfMem;
 
