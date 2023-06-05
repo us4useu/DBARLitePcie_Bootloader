@@ -21,7 +21,8 @@ void ConfigMemory_Erase() {
 	HAL_FLASH_Lock();
 }
 
-void ConfigMemory_Download(ConfMem* conf) {
+uint32_t ConfigMemory_Download(ConfMem* conf) {
+
 
 	uint8_t* destAddress = (uint8_t*)conf;
 	//find last saved config
@@ -31,9 +32,10 @@ void ConfigMemory_Download(ConfMem* conf) {
 	if(res0 != 0xAA) {
 		printf("No saved configurations found in memory\n");
 		//conf->boot = 0xAA; //stay in bootloader if no saved configs
-		return;
+		return 0;
 	}
 
+	uint32_t nConfigs = 1;
 	uint8_t* nextAddress = srcAddress + CONF_MEM_SZ;
 	res0 = *nextAddress;
 
@@ -41,11 +43,14 @@ void ConfigMemory_Download(ConfMem* conf) {
 		srcAddress += CONF_MEM_SZ;
 		nextAddress = srcAddress + CONF_MEM_SZ;
 		res0 = *nextAddress;
+		nConfigs++;
 	}
 
 	printf("Found config @0x%08X\n", srcAddress);
 
 	memcpy(destAddress, srcAddress, (size_t)CONF_MEM_SZ);
+
+	return nConfigs;
 }
 
 void ConfigMemory_Upload(ConfMem* conf) {
@@ -81,8 +86,6 @@ void ConfigMemory_Upload(ConfMem* conf) {
 		}
 		ptr += (4*FLASH_NB_32BITWORD_IN_FLASHWORD);
 	}
-
-	printf("Saved configuration @\n");
-
+	printf("Saved configuration @0x%08X\n", destAddress);
 }
 

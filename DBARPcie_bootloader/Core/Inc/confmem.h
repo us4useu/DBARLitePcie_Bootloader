@@ -23,7 +23,7 @@ typedef struct ConfMem {
 #define CONF_MEM_SZ 		sizeof(ConfMem)
 #define CONF_MEM_BASEADDR 	(0x08000000+((FLASH_SECTOR_TOTAL-1)*FLASH_SECTOR_SIZE))
 
-void ConfigMemory_Download(ConfMem* conf);
+uint32_t ConfigMemory_Download(ConfMem* conf);
 void ConfigMemory_Upload(ConfMem* conf);
 
 #endif /* INC_CONFMEM_H_ */
