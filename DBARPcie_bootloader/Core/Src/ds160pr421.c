@@ -73,8 +73,6 @@ void ds160_writeall(uint8_t addr, uint8_t reg) {
 void ds160_init(I2C_HandleTypeDef *hi2c, uint8_t sff){
 	ds160_hi2c = *hi2c;
 
-	//ds160_writeall(0x09, 0b00000100);
-
 	ds160_writeall(0x0E, 0x04);
 	ds160_writeall(0x0F, 0x04);
 
@@ -82,8 +80,6 @@ void ds160_init(I2C_HandleTypeDef *hi2c, uint8_t sff){
 
 	ds160_writeall(0x82, 0b00000011); //DC gain = 0, TX VOD = 0
 	//reset RX detect state machine
-
-
 
 	if(sff == SFF8643) {
 		uint8_t reg[16];
