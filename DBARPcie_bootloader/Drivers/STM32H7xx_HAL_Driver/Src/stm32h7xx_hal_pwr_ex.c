@@ -185,7 +185,7 @@
 /** @defgroup PWREx_REG_SET_TIMEOUT PWR Extended Flag Setting Time Out Value
   * @{
   */
-#define PWR_FLAG_SETTING_DELAY   (1000U)
+#define PWR_FLAG_SETTING_DELAY   (3000U)
 /**
   * @}
   */
@@ -341,6 +341,8 @@ HAL_StatusTypeDef HAL_PWREx_ConfigSupply (uint32_t SupplySource)
 
   /* Set the power supply configuration */
   MODIFY_REG (PWR->CR3, PWR_SUPPLY_CONFIG_MASK, SupplySource);
+
+  //PWR->CR3 &= ~(1<<1);
 
   /* Get tick */
   tickstart = HAL_GetTick ();
