@@ -55,12 +55,6 @@ typedef struct
 #define I2CSLV_FLASH		(0x21 << 1)
 #define I2CSLV_CMD 			(0x20 << 1)
 
-//Power states
-#define PWR_OFF 		0
-#define PWR_ON			1
-#define PWR_PWRDOWN		0x10
-#define PWR_PWRUP		0x11
-
 //I2C3 Master defines
 #define I2C3_WRREQ 0x05
 #define I2C3_RDREQ 0x06
@@ -108,7 +102,7 @@ uint8_t flashBuf[FLASH_APP_SZ]; //RAM flash buffer 256KB
 uint8_t i2cSlvDest = 0;
 uint16_t i2cSlvTxSize = 0;
 
-uint8_t pwrState = PWR_OFF;
+uint8_t pwrState = PWR_INIT;
 
 uint32_t tempAmbient = 0;
 
@@ -135,20 +129,16 @@ static void MX_I2C1_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_I2C2_Init(void);
 /* USER CODE BEGIN PFP */
-
-uint8_t getDbarState();
-
 void getBuildDate(uint8_t* year8, uint8_t* month8, uint8_t* day8);
 void getBuildTime(uint8_t* hour8, uint8_t* min8, uint8_t* sec8);
-
 void triggerSelect(uint8_t trigSel);
 void sffSelect(uint8_t sffSel);
 void refClkSelect(uint8_t refSel);
-
+void enable12V();
+void disable12V();
 void EraseFlash(uint8_t sector);
 void ProgramFlash(uint8_t sector, size_t size);
 /* USER CODE END PFP */
-
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
@@ -162,7 +152,7 @@ void ProgramFlash(uint8_t sector, size_t size);
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-
+	//PWR->CR3 = 0x04;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -171,7 +161,6 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
-
   /* USER CODE END Init */
 
   /* Configure the system clock */
@@ -181,6 +170,14 @@ int main(void)
   PeriphCommonClock_Config();
 
   /* USER CODE BEGIN SysInit */
+
+  /*Configure GPIO pin : POWER_BTN_Pin */
+  __HAL_RCC_GPIOH_CLK_ENABLE();
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+  GPIO_InitStruct.Pin = POWER_BTN_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(POWER_BTN_GPIO_Port, &GPIO_InitStruct);
 
   uint32_t* jumpCodePtr = (uint32_t*)DTCM_RAM_BASEADDR;
   uint32_t jumpCode = *jumpCodePtr;
@@ -192,7 +189,7 @@ int main(void)
    */
   if((*p != 0xFFFFFFFF) && (jumpCode != 0xAA55AA55)) {
 
-	  /*GPIO_PinState pButton;
+	  GPIO_PinState pButton;
 	  pButton = !HAL_GPIO_ReadPin(POWER_BTN_GPIO_Port, POWER_BTN_Pin);
 	  uint32_t tickStart = HAL_GetTick();
 
@@ -200,14 +197,14 @@ int main(void)
 	  while(pButton && (HAL_GetTick() < (tickStart + 3000))) {
 		  pButton = !HAL_GPIO_ReadPin(POWER_BTN_GPIO_Port, POWER_BTN_Pin);
 	  }
-	  if(!pButton) {*/
-	  	  __HAL_RCC_GPIOA_CLK_DISABLE();
+	  if(!pButton) {
+	  	  /*__HAL_RCC_GPIOA_CLK_DISABLE();
 	  	  __HAL_RCC_GPIOB_CLK_DISABLE();
 	  	  __HAL_RCC_GPIOC_CLK_DISABLE();
 	  	  __HAL_RCC_GPIOD_CLK_DISABLE();
 	  	  __HAL_RCC_GPIOE_CLK_DISABLE();
 	  	  __HAL_RCC_GPIOF_CLK_DISABLE();
-	  	  __HAL_RCC_GPIOG_CLK_DISABLE();
+	  	  __HAL_RCC_GPIOG_CLK_DISABLE();*/
 	  	  __HAL_RCC_GPIOH_CLK_DISABLE();
 
 	  	  HAL_RCC_DeInit();
@@ -220,7 +217,7 @@ int main(void)
 	  	  asm("msr msp, %0; bx %1;" : : "r"(vector_p->stack_addr), "r"(vector_p->func_p));
 
 		  while(1){}; //Should never get here
-	 // }
+	  }
   }
 
   /* USER CODE END SysInit */
@@ -241,7 +238,18 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
   ConfMem conf;
-  ConfigMemory_Download(&conf);
+  if(ConfigMemory_Download(&conf)) {
+	  memcpy((void*)(&regs), (void*)(&conf), 0x20); //copy serial number and hw info from config memory
+  }
+  else {
+	  regs.info.status = 0x80;
+	  regs.info.hwRevision = 0x01;
+	  regs.info.serial[0] = 23;
+	  regs.info.serial[1] = 20;
+	  regs.info.serial[2] = 03;
+	  regs.info.hwVersion - 0x00;
+  }
+
 
   printf("DBARLitePcie bootloader v1.0.0\n");
   printf("Build ");
@@ -287,8 +295,8 @@ int main(void)
   //Start listening on I2C2 (ARRIUS_0 i2c)
   HAL_I2C_EnableListen_IT(&hi2c2);
 
-  setFan0PWM(50);
-  setFan1PWM(50);
+  setFan0PWM(0);
+  setFan1PWM(0);
 
   uint8_t ds160_rx;
 
@@ -312,15 +320,19 @@ int main(void)
 		setFan0PWM(100);
 		setFan1PWM(100);
 
+		enable12V();
+		HAL_Delay(10);
+
 		HAL_GPIO_WritePin(ARRIUS_0_PMBUS_CNTRL_N_GPIO_Port, ARRIUS_0_PMBUS_CNTRL_N_Pin, GPIO_PIN_SET);
-		HAL_Delay(100);
+		HAL_GPIO_WritePin(ARRIUS_1_PMBUS_CNTRL_N_GPIO_Port, ARRIUS_1_PMBUS_CNTRL_N_Pin, GPIO_PIN_SET);
+		HAL_Delay(10);
 
 		lmk03328_enable();
 		HAL_Delay(10);
 		lmk03328_init(&hi2c3);
 
 		ds160_enable();
-		ds160_init(&hi2c3, EXTERNAL);
+		ds160_init(&hi2c3, INTERNAL);
 		HAL_Delay(10);
 
 		pwrState = PWR_ON;
@@ -333,11 +345,15 @@ int main(void)
 		regs.bootlader.keyCheck = 0x00;
 
 		HAL_GPIO_WritePin(ARRIUS_0_PMBUS_CNTRL_N_GPIO_Port, ARRIUS_0_PMBUS_CNTRL_N_Pin, GPIO_PIN_RESET);
+		HAL_GPIO_WritePin(ARRIUS_1_PMBUS_CNTRL_N_GPIO_Port, ARRIUS_1_PMBUS_CNTRL_N_Pin, GPIO_PIN_RESET);
 		lmk03328_disable();
 		ds160_disable();
 
-		setFan0PWM(50);
-		setFan1PWM(50);
+		setFan0PWM(0);
+		setFan1PWM(0);
+
+		HAL_Delay(10);
+		disable12V();
 
 		pwrState = PWR_OFF;
 		setPowerLed(GPIO_PIN_RESET);
@@ -502,13 +518,13 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.HSI48State = RCC_HSI48_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
-  RCC_OscInitStruct.PLL.PLLM = 5;
-  RCC_OscInitStruct.PLL.PLLN = 80;
+  RCC_OscInitStruct.PLL.PLLM = 25;
+  RCC_OscInitStruct.PLL.PLLN = 400;
   RCC_OscInitStruct.PLL.PLLP = 2;
-  RCC_OscInitStruct.PLL.PLLQ = 80;
+  RCC_OscInitStruct.PLL.PLLQ = 8;
   RCC_OscInitStruct.PLL.PLLR = 2;
-  RCC_OscInitStruct.PLL.PLLRGE = RCC_PLL1VCIRANGE_2;
-  RCC_OscInitStruct.PLL.PLLVCOSEL = RCC_PLL1VCOWIDE;
+  RCC_OscInitStruct.PLL.PLLRGE = RCC_PLL1VCIRANGE_0;
+  RCC_OscInitStruct.PLL.PLLVCOSEL = RCC_PLL1VCOMEDIUM;
   RCC_OscInitStruct.PLL.PLLFRACN = 0;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
@@ -581,10 +597,10 @@ static void MX_I2C1_Init(void)
   /* USER CODE END I2C1_Init 1 */
   hi2c1.Instance = I2C1;
   hi2c1.Init.Timing = 0x00401959;
-  hi2c1.Init.OwnAddress1 = I2CSLV_CMD;
+  hi2c1.Init.OwnAddress1 = 64;
   hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
   hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_ENABLE;
-  hi2c1.Init.OwnAddress2 = I2CSLV_FLASH;
+  hi2c1.Init.OwnAddress2 = 66;
   hi2c1.Init.OwnAddress2Masks = I2C_OA2_NOMASK;
   hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
   hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
@@ -629,10 +645,10 @@ static void MX_I2C2_Init(void)
   /* USER CODE END I2C2_Init 1 */
   hi2c2.Instance = I2C2;
   hi2c2.Init.Timing = 0x00401959;
-  hi2c2.Init.OwnAddress1 = I2CSLV_CMD;
+  hi2c2.Init.OwnAddress1 = 64;
   hi2c2.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
   hi2c2.Init.DualAddressMode = I2C_DUALADDRESS_ENABLE;
-  hi2c2.Init.OwnAddress2 = I2CSLV_FLASH;
+  hi2c2.Init.OwnAddress2 = 66;
   hi2c2.Init.OwnAddress2Masks = I2C_OA2_NOMASK;
   hi2c2.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
   hi2c2.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
@@ -1147,7 +1163,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOH, TRIGGER_SEL_Pin|TRIGGER_OTTP_MISO_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(ARRIUS_0_PMBUS_CNTRL_N_GPIO_Port, ARRIUS_0_PMBUS_CNTRL_N_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, ARRIUS_0_PMBUS_CNTRL_N_Pin|GPIO_PIN_10, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(TRIGGER_MODE_GPIO_Port, TRIGGER_MODE_Pin, GPIO_PIN_RESET);
@@ -1200,12 +1216,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOH, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : ARRIUS_0_PMBUS_CNTRL_N_Pin */
-  GPIO_InitStruct.Pin = ARRIUS_0_PMBUS_CNTRL_N_Pin;
+  /*Configure GPIO pins : ARRIUS_0_PMBUS_CNTRL_N_Pin PB10 */
+  GPIO_InitStruct.Pin = ARRIUS_0_PMBUS_CNTRL_N_Pin|GPIO_PIN_10;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(ARRIUS_0_PMBUS_CNTRL_N_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /*Configure GPIO pin : SFF_0_PERST_Pin */
   GPIO_InitStruct.Pin = SFF_0_PERST_Pin;
@@ -1225,6 +1241,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
   GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   HAL_GPIO_Init(SFF_1_PERST_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : PB15 */
+  GPIO_InitStruct.Pin = GPIO_PIN_15;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /*Configure GPIO pin : POWER_BTN_Pin */
   GPIO_InitStruct.Pin = POWER_BTN_Pin;
@@ -1473,12 +1495,12 @@ void togglePower() {
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 	if(GPIO_Pin == GPIO_PIN_11) {
-		//printf("SFF0 RST %d\n", HAL_GPIO_ReadPin(SFF_0_PERST_GPIO_Port, SFF_0_PERST_Pin));
+		printf("SFF0 RST %d\n", HAL_GPIO_ReadPin(SFF_0_PERST_GPIO_Port, SFF_0_PERST_Pin));
 		HAL_GPIO_WritePin(ARRIUS_0_PCIE_PERST_N_OD_GPIO_Port, ARRIUS_0_PCIE_PERST_N_OD_Pin,
 							HAL_GPIO_ReadPin(SFF_0_PERST_GPIO_Port, SFF_0_PERST_Pin));
 	}
 	if(GPIO_Pin == GPIO_PIN_10) {
-		//printf("SFF1 RST %d\n", HAL_GPIO_ReadPin(SFF_1_PERST_GPIO_Port, SFF_1_PERST_Pin));
+		printf("SFF1 RST %d\n", HAL_GPIO_ReadPin(SFF_1_PERST_GPIO_Port, SFF_1_PERST_Pin));
 		HAL_GPIO_WritePin(ARRIUS_1_PCIE_PERST_N_OD_GPIO_Port, ARRIUS_1_PCIE_PERST_N_OD_Pin,
 							HAL_GPIO_ReadPin(SFF_1_PERST_GPIO_Port, SFF_1_PERST_Pin));
 	}
@@ -1524,6 +1546,23 @@ void ProgramFlash(uint8_t sector, size_t size) {
 
 	HAL_FLASH_Lock();
 	printf("Done\n");
+}
+
+uint8_t getDbarPowerState() {
+	return pwrState;
+}
+
+void enable12V() {
+	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, GPIO_PIN_SET);
+	while(HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_15) == GPIO_PIN_RESET){
+
+	}
+	printf("12V supply enabled\n");
+}
+
+void disable12V() {
+	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, GPIO_PIN_RESET);
+	printf("12V supply disabled\n");
 }
 
 PUTCHAR_PROTOTYPE

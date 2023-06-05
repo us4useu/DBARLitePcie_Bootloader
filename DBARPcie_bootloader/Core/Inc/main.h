@@ -55,7 +55,7 @@ void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
-
+uint8_t getDbarPowerState();
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
@@ -131,6 +131,12 @@ void Error_Handler(void);
 #define POWER_LED_GPIO_Port GPIOE
 
 /* USER CODE BEGIN Private defines */
+//Power states
+#define PWR_OFF 		0
+#define PWR_ON			1
+#define PWR_PWRDOWN		0x10
+#define PWR_PWRUP		0x11
+#define PWR_INIT		0x1F
 
 /* USER CODE END Private defines */
 

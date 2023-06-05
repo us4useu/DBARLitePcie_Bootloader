@@ -31,7 +31,8 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define PWR_BTN_PUSH_TIME_MS	100
+#define PWRON_BTN_PUSH_TIME_MS		100
+#define PWROFF_BTN_PUSH_TIME_MS		500
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -188,21 +189,28 @@ void PendSV_Handler(void)
 void SysTick_Handler(void)
 {
   /* USER CODE BEGIN SysTick_IRQn 0 */
+	uint8_t pwrState = getDbarPowerState();
+	uint32_t pushTime = PWRON_BTN_PUSH_TIME_MS;
 
-	if(HAL_GPIO_ReadPin(POWER_BTN_GPIO_Port, POWER_BTN_Pin) == GPIO_PIN_RESET) {
-		if(pwrBtnCounter < PWR_BTN_PUSH_TIME_MS)
+	if(pwrState == PWR_ON) {
+		pushTime = PWROFF_BTN_PUSH_TIME_MS;
+
+	}
+
+	if(pwrState != PWR_INIT){
+		if(HAL_GPIO_ReadPin(POWER_BTN_GPIO_Port, POWER_BTN_Pin) == GPIO_PIN_RESET) {
+			if(pwrBtnCounter < PWR_BTN_PUSH_TIME_MS)
+				pwrBtnCounter++;
+		}
+		else {
+			pwrBtnCounter = 0;
+		}
+
+		if(pwrBtnCounter == PWR_BTN_PUSH_TIME_MS) {
+			togglePower();
 			pwrBtnCounter++;
+		}
 	}
-	else {
-		pwrBtnCounter = 0;
-	}
-
-	if(pwrBtnCounter == PWR_BTN_PUSH_TIME_MS) {
-		//toggle power state
-		togglePower();
-		pwrBtnCounter++;
-	}
-
 
   /* USER CODE END SysTick_IRQn 0 */
   HAL_IncTick();
