@@ -53,10 +53,11 @@ uint32_t ConfigMemory_Download(ConfMem* conf) {
 	return nConfigs;
 }
 
-void ConfigMemory_Upload(ConfMem* conf) {
+uint32_t ConfigMemory_Upload(ConfMem* conf) {
 
 	uint8_t* srcAddress;
 	uint32_t ptr = 0;
+	uint32_t nConfigs = 0;
 
 	uint32_t* destAddress = CONF_MEM_BASEADDR;
 	uint8_t res0 = *destAddress;
@@ -65,12 +66,14 @@ void ConfigMemory_Upload(ConfMem* conf) {
 	while(res0 == 0xAA && destAddress < (FLASH_END - CONF_MEM_SZ)) {
 		destAddress += CONF_MEM_SZ;
 		res0 = *destAddress;
+		nConfigs++;
 	}
 
 	//if whole memory used, erase and start over
 	if(res0 == 0xAA) {
 		ConfigMemory_Erase();
 		destAddress = CONF_MEM_BASEADDR;
+		nConfigs = 0;
 	}
 
 	HAL_StatusTypeDef st;
@@ -83,9 +86,14 @@ void ConfigMemory_Upload(ConfMem* conf) {
 		if(st!=HAL_OK) {
 			uint32_t err = HAL_FLASH_GetError();
 			printf("Flash write error 0x%08X\n", err);
+			return nConfigs;
 		}
 		ptr += (4*FLASH_NB_32BITWORD_IN_FLASHWORD);
 	}
+
+	nConfigs++;
 	printf("Saved configuration @0x%08X\n", destAddress);
+
+	return nConfigs;
 }
 

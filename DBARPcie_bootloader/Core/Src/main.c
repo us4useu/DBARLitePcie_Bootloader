@@ -44,11 +44,12 @@ typedef struct
 #define EXTERNAL 	0xF0
 #define INTERNAL	0x0F
 
-#define DTCM_RAM_BASEADDR 0x38000000 	//16KB RAM_D3
-#define FLASH_APP_BASEADDR 0x08040000 	//128KB application offset
-#define FLASH_BUF_BASEADDR 0x08080000 	//128KB application offset
-#define FLASH_APP_SZ 0x00020000 		//128KB application firmware size
-#define BL_KEY 0xFEEBDAED
+#define DTCM_RAM_BASEADDR 	0x38000000 	//16KB RAM_D3
+#define FLASH_APP_BASEADDR 	0x08080000 	//128KB application offset
+#define FLASH_BUF_BASEADDR 	0x08040000 	//128KB application offset
+#define FLASH_APP_SZ 		0x00020000 		//128KB application firmware size
+#define BL_KEY 				0xFEEBDAED
+#define CONF_KEY 			0xFEEBDAED
 
 #define I2CSLV_RXBUF_SZ 	256
 
@@ -138,6 +139,7 @@ void enable12V();
 void disable12V();
 void EraseFlash(uint8_t sector);
 void ProgramFlash(uint8_t sector, size_t size);
+void CopyFlash();
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -181,13 +183,19 @@ int main(void)
 
   uint32_t* jumpCodePtr = (uint32_t*)DTCM_RAM_BASEADDR;
   uint32_t jumpCode = *jumpCodePtr;
-  uint32_t* p = (uint32_t*)FLASH_APP_BASEADDR;
+  uint32_t* pApp = (uint32_t*)FLASH_APP_BASEADDR;
+  uint32_t* pUpd = (uint32_t*)FLASH_BUF_BASEADDR;
 
   /*
    * if application memory is not programmed or user requested
    * to flash application memory stay in bootloader
    */
-  if((*p != 0xFFFFFFFF) && (jumpCode != 0xAA55AA55)) {
+  if(*pUpd != 0xFFFFFFFF) {
+	  //immediate flash buffer contains data - copy to app flash
+	  CopyFlash();
+  }
+
+  if((*pApp != 0xFFFFFFFF) && (*pUpd != 0xFFFFFFFF) && (jumpCode != 0xAA55AA55)) {
 
 	  GPIO_PinState pButton;
 	  pButton = !HAL_GPIO_ReadPin(POWER_BTN_GPIO_Port, POWER_BTN_Pin);
@@ -196,29 +204,31 @@ int main(void)
 	  //If button is pressed during powerup for XX seconds stay in bootloader
 	  while(pButton && (HAL_GetTick() < (tickStart + 3000))) {
 		  pButton = !HAL_GPIO_ReadPin(POWER_BTN_GPIO_Port, POWER_BTN_Pin);
+		  HAL_Delay(1);
 	  }
 	  if(!pButton) {
-	  	  /*__HAL_RCC_GPIOA_CLK_DISABLE();
-	  	  __HAL_RCC_GPIOB_CLK_DISABLE();
-	  	  __HAL_RCC_GPIOC_CLK_DISABLE();
-	  	  __HAL_RCC_GPIOD_CLK_DISABLE();
-	  	  __HAL_RCC_GPIOE_CLK_DISABLE();
-	  	  __HAL_RCC_GPIOF_CLK_DISABLE();
-	  	  __HAL_RCC_GPIOG_CLK_DISABLE();*/
-	  	  __HAL_RCC_GPIOH_CLK_DISABLE();
+		  /*__HAL_RCC_GPIOA_CLK_DISABLE();
+		  __HAL_RCC_GPIOB_CLK_DISABLE();
+		  __HAL_RCC_GPIOC_CLK_DISABLE();
+		  __HAL_RCC_GPIOD_CLK_DISABLE();
+		  __HAL_RCC_GPIOE_CLK_DISABLE();
+		  __HAL_RCC_GPIOF_CLK_DISABLE();
+		  __HAL_RCC_GPIOG_CLK_DISABLE();*/
+		  __HAL_RCC_GPIOH_CLK_DISABLE();
 
-	  	  HAL_RCC_DeInit();
-	  	  HAL_DeInit();
-	  	  SysTick->CTRL = 0;
-	  	  SysTick->LOAD = 0;
-	  	  SysTick->VAL = 0;
+		  HAL_RCC_DeInit();
+		  HAL_DeInit();
+		  SysTick->CTRL = 0;
+		  SysTick->LOAD = 0;
+		  SysTick->VAL = 0;
 
-	  	  const JumpStruct* vector_p = (JumpStruct*)FLASH_APP_BASEADDR;
-	  	  asm("msr msp, %0; bx %1;" : : "r"(vector_p->stack_addr), "r"(vector_p->func_p));
+		  const JumpStruct* vector_p = (JumpStruct*)FLASH_APP_BASEADDR;
+		  asm("msr msp, %0; bx %1;" : : "r"(vector_p->stack_addr), "r"(vector_p->func_p));
 
 		  while(1){}; //Should never get here
 	  }
   }
+
 
   /* USER CODE END SysInit */
 
@@ -238,33 +248,27 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
   ConfMem conf;
-  if(ConfigMemory_Download(&conf)) {
+  regs.configCtrl.count = ConfigMemory_Download(&conf);
+  if(regs.configCtrl.count) {
 	  memcpy((void*)(&regs), (void*)(&conf), 0x20); //copy serial number and hw info from config memory
   }
   else {
-	  regs.info.status = 0x80;
-	  regs.info.hwRevision = 0x01;
+	  printf("Loading default info values\n");
+	  regs.info.hwRevision = 1;
 	  regs.info.serial[0] = 23;
-	  regs.info.serial[1] = 20;
-	  regs.info.serial[2] = 03;
-	  regs.info.hwVersion - 0x00;
+	  regs.info.serial[1] = 0;
+	  regs.info.serial[2] = 0;
+	  regs.info.hwVersion - 0;
+	  sprintf(regs.info.snString, "DBLP-01230000-00");
   }
-
 
   printf("DBARLitePcie bootloader v1.0.0\n");
   printf("Build ");
   printf(__TIMESTAMP__);
   printf("\n");
 
-  memcpy((void*)(&regs), (void*)(&conf), 0x20); //copy serial number and hw info from config memory
-
-  //set info regs
-  regs.info.status = 0x80;
-  regs.info.hwRevision = 0x01;
-  regs.info.serial[0] = 23;
-  regs.info.serial[1] = 20;
-  regs.info.serial[2] = 03;
-  regs.info.hwVersion - 0x00;
+  //set other info regs
+  regs.info.status = 0x80; // status = BL
   regs.info.fwVersion = FW_VER; //set firmware version
   sprintf(regs.info.snString, "DBLP%02d%02d%02d%02d%02d", regs.info.hwRevision,
 		  regs.info.serial[0], regs.info.serial[1], regs.info.serial[2], regs.info.hwVersion);
@@ -273,21 +277,19 @@ int main(void)
   getBuildTime(&(regs.info.buildHour), &(regs.info.buildMin), &(regs.info.buildSec));
 
   //set config regs
-  uint8_t confMemPtr = 0;
-  regs.config.AddrOffset = confMemPtr;
-  regs.config.Control = 0;
-  uint8_t* srcAddress = (uint8_t*)&conf + confMemPtr;
-  regs.config.Value = *srcAddress;
+  regs.configCtrl.key = 0;
+  regs.configCtrl.keyCheck = 0;
+  regs.configCtrl.confCmd = 0;
 
   //set bootloader regs
-  regs.bootlader.flashOffset = txFlashMemPtr;
-  regs.bootlader.flashCmd = 0x00;
-  regs.bootlader.key = 0;
-  regs.bootlader.keyCheck = 0x00;
-  regs.bootlader.softReset = 0x00;
+  regs.bootloader.flashOffset = txFlashMemPtr;
+  regs.bootloader.flashCmd = 0x00;
+  regs.bootloader.key = 0;
+  regs.bootloader.keyCheck = 0x00;
+  regs.bootloader.softReset = 0x00;
+
   cdcun1208_init(&hi2c3);
 
-  //clear flash RAM buffer
   for(uint32_t n = 0; n < FLASH_APP_SZ; n++) {
 	  flashBuf[n] = 0xFF;
   }
@@ -341,8 +343,10 @@ int main(void)
 	}
 	else if(pwrState == PWR_PWRDOWN) {
 		//start power down sequence
-		regs.bootlader.key = 0;
-		regs.bootlader.keyCheck = 0x00;
+		regs.bootloader.key = 0;
+		regs.bootloader.keyCheck = 0x00;
+		regs.configCtrl.key = 0;
+		regs.configCtrl.keyCheck = 0x00;
 
 		HAL_GPIO_WritePin(ARRIUS_0_PMBUS_CNTRL_N_GPIO_Port, ARRIUS_0_PMBUS_CNTRL_N_Pin, GPIO_PIN_RESET);
 		HAL_GPIO_WritePin(ARRIUS_1_PMBUS_CNTRL_N_GPIO_Port, ARRIUS_1_PMBUS_CNTRL_N_Pin, GPIO_PIN_RESET);
@@ -440,39 +444,66 @@ int main(void)
 		//END I2C3 MASTER PASSTHROUGH COMMANDS
 
 		//BL/FLASH COMMANDS
-		if(regs.bootlader.flashOffset != txFlashMemPtr) {
-			txFlashMemPtr = regs.bootlader.flashOffset;
+		if(regs.bootloader.flashOffset != txFlashMemPtr) {
+			txFlashMemPtr = regs.bootloader.flashOffset;
 			printf("Set flash offset pointer = 0x%08X\n", txFlashMemPtr);
 		}
-		if(regs.bootlader.keyCheck == 0x00) {
-			if(regs.bootlader.key == BL_KEY) {
-				regs.bootlader.keyCheck = 0x01; // unlock bootloader if key is valid
+		if(regs.bootloader.keyCheck == 0x00) {
+			if(regs.bootloader.key == BL_KEY) {
+				regs.bootloader.keyCheck = 0x01; // unlock bootloader if key is valid
 				printf("Bootloader unlocked\n");
 			}
 		}
 		else {
 			//key valid, process bootloader commands
-			if(regs.bootlader.flashCmd & 0x40){ // flash erase
-				uint8_t sector = regs.bootlader.flashCmd & 0x01;
+			if(regs.bootloader.flashCmd & 0x40){ // flash erase
+				uint8_t sector = regs.bootloader.flashCmd & 0x01;
 				printf("Erase flash sector %d\n", sector);
 				EraseFlash(sector);
-				regs.bootlader.flashCmd &= ~ 0x40;
+				regs.bootloader.flashCmd &= ~ 0x40;
 			}
-			if(regs.bootlader.flashCmd & 0x80){ // flash load
-				uint8_t sector = regs.bootlader.flashCmd & 0x01;
+			if(regs.bootloader.flashCmd & 0x80){ // flash load
+				uint8_t sector = regs.bootloader.flashCmd & 0x01;
 				uint32_t size = txFlashMemPtr;
 				printf("Copy &d bytes to flash sector %d\n", txFlashMemPtr, sector);
 				ProgramFlash(sector, size);
-				regs.bootlader.flashCmd &= ~ 0x80;
+				regs.bootloader.flashCmd &= ~ 0x80;
+			}
+			if(regs.bootloader.flashCmd & 0x02) { //clear RAM buffer
+				for(size_t n = 0; n < sizeof(flashBuf); n++) {
+					flashBuf[n] = 0xFF;
+				}
+				printf("Cleared RAM buffer\n");
+			}
+		}
+		//END FLASH COMMANDS
+
+		//CONFIG MEMORY COMMANDS
+
+		if(regs.configCtrl.keyCheck == 0x00) {
+			if(regs.configCtrl.key == 0xFEEBDAED) {
+				regs.configCtrl.keyCheck = 0x01; // unlock bootloader if key is valid
+				printf("Config memory unlocked\n");
+			}
+		}
+		else {
+			if(regs.configCtrl.confCmd == 0x80) {
+				regs.configCtrl.count = ConfigMemory_Download(&conf);
+				memcpy(regs.configMem.reg, &conf, sizeof(conf));
+				regs.configCtrl.confCmd &= ~0x80; // clear request
+			}
+			if(regs.configCtrl.confCmd == 0x40) {
+				memcpy(&conf, regs.configMem.reg, sizeof(conf));
+				regs.configCtrl.count = ConfigMemory_Upload(&conf);
+				regs.configCtrl.confCmd &= ~0x40; // clear request
 			}
 		}
 
-
-		//END FLASH COMMANDS
+		//END CONFIG MEMORY COMANDS
 
 		//OTHER COMMANDS
 
-		if(regs.bootlader.softReset == 0x55){
+		if(regs.bootloader.softReset == 0x55){
 			printf("Reset\n");
 			HAL_Delay(1000);
 			//*jumpCodePtr = 0x00000000;
@@ -597,10 +628,10 @@ static void MX_I2C1_Init(void)
   /* USER CODE END I2C1_Init 1 */
   hi2c1.Instance = I2C1;
   hi2c1.Init.Timing = 0x00401959;
-  hi2c1.Init.OwnAddress1 = 64;
+  hi2c1.Init.OwnAddress1 = I2CSLV_CMD;
   hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
   hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_ENABLE;
-  hi2c1.Init.OwnAddress2 = 66;
+  hi2c1.Init.OwnAddress2 = I2CSLV_FLASH;
   hi2c1.Init.OwnAddress2Masks = I2C_OA2_NOMASK;
   hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
   hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
@@ -645,10 +676,10 @@ static void MX_I2C2_Init(void)
   /* USER CODE END I2C2_Init 1 */
   hi2c2.Instance = I2C2;
   hi2c2.Init.Timing = 0x00401959;
-  hi2c2.Init.OwnAddress1 = 64;
+  hi2c2.Init.OwnAddress1 = I2CSLV_CMD;
   hi2c2.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
   hi2c2.Init.DualAddressMode = I2C_DUALADDRESS_ENABLE;
-  hi2c2.Init.OwnAddress2 = 66;
+  hi2c2.Init.OwnAddress2 = I2CSLV_FLASH;
   hi2c2.Init.OwnAddress2Masks = I2C_OA2_NOMASK;
   hi2c2.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
   hi2c2.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
@@ -1271,10 +1302,10 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 
 void HAL_I2C_AddrCallback(I2C_HandleTypeDef *hi2c, uint8_t TransferDirection, uint16_t AddrMatchCode) {
-	/*char dbg[6];
+	char dbg[6];
 	sprintf(dbg, "0x%04x", AddrMatchCode);
 	printf(dbg);
-	printf(" I2C Address detected\n");*/
+	printf(" I2C Address detected\n");
 
 	i2cSlvDest = AddrMatchCode; //CMD or FLASH
 
@@ -1304,16 +1335,16 @@ void HAL_I2C_AddrCallback(I2C_HandleTypeDef *hi2c, uint8_t TransferDirection, ui
 
 void HAL_I2C_SlaveTxCpltCallback(I2C_HandleTypeDef *hi2c) {
 	if(i2cSlvDest == I2CSLV_CMD) {
-		//printf(" I2C cmd response sent\n");
+		printf(" I2C cmd response sent\n");
 		//Only gets called if regs memory space rolls over, transmit regs from 0x00 offset
 		uint8_t* srcAddress = (uint8_t*)&regs;
 		HAL_I2C_Slave_Seq_Transmit_IT(hi2c, srcAddress, I2CSLV_REGS_SZ, I2C_NEXT_FRAME);
 	}
 	else if(i2cSlvDest == I2CSLV_FLASH) {
-		//printf(" I2C flash buf response sent\n");
+		printf(" I2C flash buf response sent\n");
 		i2cSlvTxSize = 256;
 		txFlashMemPtr += i2cSlvTxSize;
-		regs.bootlader.flashOffset = txFlashMemPtr;
+		regs.bootloader.flashOffset = txFlashMemPtr;
 		uint8_t* txPtr = flashBuf;
 		txPtr += txFlashMemPtr;
 		HAL_I2C_Slave_Seq_Transmit_IT(hi2c, txPtr, i2cSlvTxSize, I2C_NEXT_FRAME);
@@ -1325,7 +1356,7 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c) {
 	if(rxBufferPtr == 0 && i2cSlvDest == I2CSLV_CMD)
 		txBufferPtr = rxBuffer[0];
 
-	//printf(" I2C received byte 0x%02X\n", rxBuffer[rxBufferPtr]);
+	printf(" I2C received byte 0x%02X\n", rxBuffer[rxBufferPtr]);
 	if(	rxBufferPtr < 255) {
 		rxBufferPtr++;
 	}
@@ -1348,10 +1379,10 @@ void HAL_I2C_ListenCpltCallback(I2C_HandleTypeDef *hi2c) {
 	if(i2cSlvDest == I2CSLV_FLASH) {
 		memcpy(flashBuf + txFlashMemPtr, rxBuffer, rxBufferPtr);
 		txFlashMemPtr += rxBufferPtr;
-		regs.bootlader.flashOffset = txFlashMemPtr;
+		regs.bootloader.flashOffset = txFlashMemPtr;
 	}
 	else if(i2cSlvDest == I2CSLV_CMD) {
-		//printf(" I2C listen cplt\n");
+		printf(" I2C listen cplt\n");
 		//Process I2C command
 		if(rxBufferPtr>1) {
 			ProcessI2cCmd(rxBuffer, rxBufferPtr);
@@ -1512,17 +1543,17 @@ void EraseFlash(uint8_t sector) {
 	FLASH_EraseInitStruct.TypeErase = FLASH_TYPEERASE_SECTORS;    //Erase type set to erase pages( Available other type is mass erase)
 	FLASH_EraseInitStruct.Banks = FLASH_BANK_1;
 	FLASH_EraseInitStruct.Sector = FLASH_SECTOR_2 + sector;            //Starting address of flash page (0x0800 0000 - 0x0801 FC00)
-	FLASH_EraseInitStruct.NbSectors = 1;                    	//Firmware size max 128KB
+	FLASH_EraseInitStruct.NbSectors = 2;                    	//Firmware size max 128KB
 
 	uint32_t  errorStatus = 0;
 
-	printf("Erasing Flash... ");
+	printf("Erasing Application Flash... ");
 	HAL_FLASHEx_Erase(&FLASH_EraseInitStruct,&errorStatus);
 	printf("Done\n");
 }
 
 void ProgramFlash(uint8_t sector, size_t size) {
-	if(sector > 1) {
+	if(sector > 3) {
 		printf("Error programing flash - Invalid flash sector\n");
 		return;
 	}
@@ -1543,9 +1574,40 @@ void ProgramFlash(uint8_t sector, size_t size) {
 		}
 		ptr+=(4*FLASH_NB_32BITWORD_IN_FLASHWORD);
 	}
-
 	HAL_FLASH_Lock();
 	printf("Done\n");
+}
+
+void CopyFlash() {
+	HAL_FLASH_Unlock();
+
+	FLASH_EraseInitTypeDef FLASH_EraseInitStruct = {0};
+	FLASH_EraseInitStruct.TypeErase = FLASH_TYPEERASE_SECTORS;    //Erase type set to erase pages( Available other type is mass erase)
+	FLASH_EraseInitStruct.Banks = FLASH_BANK_1;
+	FLASH_EraseInitStruct.Sector = FLASH_SECTOR_4;            //Starting address of flash page (0x0800 0000 - 0x0801 FC00)
+	FLASH_EraseInitStruct.NbSectors = 2;                    	//Firmware size max 128KB
+
+	uint32_t  errorStatus = 0;
+
+	//printf("Erasing Flash... ");
+	HAL_FLASHEx_Erase(&FLASH_EraseInitStruct,&errorStatus);
+	//printf("Done\n");
+
+	uint32_t ptr = 0;
+	HAL_StatusTypeDef st;
+
+	//printf("Writing Application Flash...");
+
+	while(ptr < (FLASH_SECTOR_SIZE * 2)) {
+		st = HAL_FLASH_Program(FLASH_TYPEPROGRAM_FLASHWORD, (uint32_t)(FLASH_APP_BASEADDR+ptr), (uint32_t)(FLASH_BUF_BASEADDR+ptr));
+		if(st!=HAL_OK) {
+			uint32_t err = HAL_FLASH_GetError();
+			printf("Flash write error 0x%08x\n", err);
+		}
+		ptr+=(4*FLASH_NB_32BITWORD_IN_FLASHWORD);
+	}
+	HAL_FLASH_Lock();
+	//printf("Done\n");
 }
 
 uint8_t getDbarPowerState() {

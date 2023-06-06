@@ -199,14 +199,14 @@ void SysTick_Handler(void)
 
 	if(pwrState != PWR_INIT){
 		if(HAL_GPIO_ReadPin(POWER_BTN_GPIO_Port, POWER_BTN_Pin) == GPIO_PIN_RESET) {
-			if(pwrBtnCounter < PWR_BTN_PUSH_TIME_MS)
+			if(pwrBtnCounter < pushTime)
 				pwrBtnCounter++;
 		}
 		else {
 			pwrBtnCounter = 0;
 		}
 
-		if(pwrBtnCounter == PWR_BTN_PUSH_TIME_MS) {
+		if(pwrBtnCounter == pushTime) {
 			togglePower();
 			pwrBtnCounter++;
 		}
