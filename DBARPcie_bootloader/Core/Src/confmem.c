@@ -23,7 +23,6 @@ void ConfigMemory_Erase() {
 
 uint32_t ConfigMemory_Download(ConfMem* conf) {
 
-
 	uint8_t* destAddress = (uint8_t*)conf;
 	//find last saved config
 	uint8_t* srcAddress = (uint8_t*)CONF_MEM_BASEADDR;

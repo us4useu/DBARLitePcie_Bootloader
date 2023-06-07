@@ -266,6 +266,9 @@ int main(void)
   printf("Build ");
   printf(__TIMESTAMP__);
   printf("\n");
+  printf("SN: ");
+  printf(regs.info.snString);
+  printf("\n");
 
   //set other info regs
   regs.info.status = 0x80; // status = BL
@@ -294,9 +297,6 @@ int main(void)
 	  flashBuf[n] = 0xFF;
   }
 
-  //Start listening on I2C2 (ARRIUS_0 i2c)
-  HAL_I2C_EnableListen_IT(&hi2c2);
-
   setFan0PWM(0);
   setFan1PWM(0);
 
@@ -310,6 +310,8 @@ int main(void)
   pwrState = PWR_OFF;
 
   i2cCmdPending = 0;
+  //Start listening on I2C2 (ARRIUS_0 i2c)
+  HAL_I2C_EnableListen_IT(&hi2c2);
 
   /* USER CODE END 2 */
 
@@ -479,7 +481,6 @@ int main(void)
 		//END FLASH COMMANDS
 
 		//CONFIG MEMORY COMMANDS
-
 		if(regs.configCtrl.keyCheck == 0x00) {
 			if(regs.configCtrl.key == 0xFEEBDAED) {
 				regs.configCtrl.keyCheck = 0x01; // unlock bootloader if key is valid
@@ -498,22 +499,17 @@ int main(void)
 				regs.configCtrl.confCmd &= ~0x40; // clear request
 			}
 		}
-
 		//END CONFIG MEMORY COMANDS
 
 		//OTHER COMMANDS
-
 		if(regs.bootloader.softReset == 0x55){
 			printf("Reset\n");
 			HAL_Delay(1000);
 			//*jumpCodePtr = 0x00000000;
 			HAL_NVIC_SystemReset();
 		}
-
 		i2cCmdPending = 0;
 	}
-
-
 
     /* USER CODE END WHILE */
 
@@ -1302,10 +1298,10 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 
 void HAL_I2C_AddrCallback(I2C_HandleTypeDef *hi2c, uint8_t TransferDirection, uint16_t AddrMatchCode) {
-	char dbg[6];
+	/*char dbg[6];
 	sprintf(dbg, "0x%04x", AddrMatchCode);
 	printf(dbg);
-	printf(" I2C Address detected\n");
+	printf(" I2C Address detected\n");*/
 
 	i2cSlvDest = AddrMatchCode; //CMD or FLASH
 
@@ -1356,7 +1352,7 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c) {
 	if(rxBufferPtr == 0 && i2cSlvDest == I2CSLV_CMD)
 		txBufferPtr = rxBuffer[0];
 
-	printf(" I2C received byte 0x%02X\n", rxBuffer[rxBufferPtr]);
+	//printf(" I2C received byte 0x%02X\n", rxBuffer[rxBufferPtr]);
 	if(	rxBufferPtr < 255) {
 		rxBufferPtr++;
 	}
@@ -1382,7 +1378,7 @@ void HAL_I2C_ListenCpltCallback(I2C_HandleTypeDef *hi2c) {
 		regs.bootloader.flashOffset = txFlashMemPtr;
 	}
 	else if(i2cSlvDest == I2CSLV_CMD) {
-		printf(" I2C listen cplt\n");
+		//printf(" I2C listen cplt\n");
 		//Process I2C command
 		if(rxBufferPtr>1) {
 			ProcessI2cCmd(rxBuffer, rxBufferPtr);
@@ -1400,18 +1396,18 @@ void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c) {
 }
 
 void HAL_I2C_MasterTxCpltCallback(I2C_HandleTypeDef *hi2c) {
-	printf("I2C3 Master Tx Done\n");
+	//printf("I2C3 Master Tx Done\n");
 	regs.i2c.status = 0x00;
 }
 
 void HAL_I2C_MasterRxCpltCallback(I2C_HandleTypeDef *hi2c) {
-	printf("I2C3 Master Rx Done\n");
+	//printf("I2C3 Master Rx Done\n");
 	memcpy(regs.i2c.rdBuf, i2c3_rxBuf, 4);
 	regs.i2c.status = 0x00;
 }
 
 void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c) {
-	printf("I2C3 Master TxRx Done\n");
+	//printf("I2C3 Master TxRx Done\n");
 	memcpy(regs.i2c.rdBuf, i2c3_rxBuf, 4);
 	regs.i2c.status = 0x00;
 }
@@ -1526,14 +1522,15 @@ void togglePower() {
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 	if(GPIO_Pin == GPIO_PIN_11) {
-		printf("SFF0 RST %d\n", HAL_GPIO_ReadPin(SFF_0_PERST_GPIO_Port, SFF_0_PERST_Pin));
-		HAL_GPIO_WritePin(ARRIUS_0_PCIE_PERST_N_OD_GPIO_Port, ARRIUS_0_PCIE_PERST_N_OD_Pin,
-							HAL_GPIO_ReadPin(SFF_0_PERST_GPIO_Port, SFF_0_PERST_Pin));
+		GPIO_PinState sff0RstState = HAL_GPIO_ReadPin(SFF_0_PERST_GPIO_Port, SFF_0_PERST_Pin);
+		printf("SFF0 RST %d\n", sff0RstState);
+		HAL_GPIO_WritePin(ARRIUS_0_PCIE_PERST_N_OD_GPIO_Port, ARRIUS_0_PCIE_PERST_N_OD_Pin, sff0RstState);
+		HAL_GPIO_WritePin(PC_LED_GPIO_Port, PC_LED_Pin, sff0RstState);
 	}
 	if(GPIO_Pin == GPIO_PIN_10) {
-		printf("SFF1 RST %d\n", HAL_GPIO_ReadPin(SFF_1_PERST_GPIO_Port, SFF_1_PERST_Pin));
-		HAL_GPIO_WritePin(ARRIUS_1_PCIE_PERST_N_OD_GPIO_Port, ARRIUS_1_PCIE_PERST_N_OD_Pin,
-							HAL_GPIO_ReadPin(SFF_1_PERST_GPIO_Port, SFF_1_PERST_Pin));
+		GPIO_PinState sff1RstState = HAL_GPIO_ReadPin(SFF_0_PERST_GPIO_Port, SFF_0_PERST_Pin);
+		printf("SFF1 RST %d\n", sff1RstState);
+		HAL_GPIO_WritePin(ARRIUS_1_PCIE_PERST_N_OD_GPIO_Port, ARRIUS_1_PCIE_PERST_N_OD_Pin, sff1RstState);
 	}
 }
 
