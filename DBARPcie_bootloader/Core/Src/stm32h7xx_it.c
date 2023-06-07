@@ -33,6 +33,7 @@
 /* USER CODE BEGIN PD */
 #define PWRON_BTN_PUSH_TIME_MS		100
 #define PWROFF_BTN_PUSH_TIME_MS		500
+#define BLINK_TIME_MS				250
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -43,6 +44,7 @@
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN PV */
 uint16_t pwrBtnCounter = 0;
+uint16_t blinkerCounter = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -194,7 +196,12 @@ void SysTick_Handler(void)
 
 	if(pwrState == PWR_ON) {
 		pushTime = PWROFF_BTN_PUSH_TIME_MS;
-
+		blinkerCounter++;
+		if(blinkerCounter == BLINK_TIME_MS) {
+			//toggle power LED
+			HAL_GPIO_TogglePin(POWER_LED_GPIO_Port, POWER_LED_Pin);
+			blinkerCounter = 0;
+		}
 	}
 
 	if(pwrState != PWR_INIT){

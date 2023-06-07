@@ -154,7 +154,7 @@ void CopyFlash();
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-	//PWR->CR3 = 0x04;
+	SCB->VTOR = 0x08000004;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -194,10 +194,10 @@ int main(void)
 	  //immediate flash buffer contains data - copy to app flash
 	  CopyFlash();
   }
+  GPIO_PinState pButton;
 
-  if((*pApp != 0xFFFFFFFF) && (*pUpd != 0xFFFFFFFF) && (jumpCode != 0xAA55AA55)) {
+  if((*pApp != 0xFFFFFFFF)) {
 
-	  GPIO_PinState pButton;
 	  pButton = !HAL_GPIO_ReadPin(POWER_BTN_GPIO_Port, POWER_BTN_Pin);
 	  uint32_t tickStart = HAL_GetTick();
 
@@ -207,28 +207,36 @@ int main(void)
 		  HAL_Delay(1);
 	  }
 	  if(!pButton) {
-		  /*__HAL_RCC_GPIOA_CLK_DISABLE();
+		  HAL_GPIO_DeInit(POWER_BTN_GPIO_Port, POWER_BTN_Pin);
+		  __HAL_RCC_GPIOA_CLK_DISABLE();
 		  __HAL_RCC_GPIOB_CLK_DISABLE();
 		  __HAL_RCC_GPIOC_CLK_DISABLE();
 		  __HAL_RCC_GPIOD_CLK_DISABLE();
 		  __HAL_RCC_GPIOE_CLK_DISABLE();
 		  __HAL_RCC_GPIOF_CLK_DISABLE();
-		  __HAL_RCC_GPIOG_CLK_DISABLE();*/
+		  __HAL_RCC_GPIOG_CLK_DISABLE();
 		  __HAL_RCC_GPIOH_CLK_DISABLE();
+
+		  const JumpStruct* vector_p = (JumpStruct*)FLASH_APP_BASEADDR;
 
 		  HAL_RCC_DeInit();
 		  HAL_DeInit();
+
 		  SysTick->CTRL = 0;
 		  SysTick->LOAD = 0;
 		  SysTick->VAL = 0;
 
-		  const JumpStruct* vector_p = (JumpStruct*)FLASH_APP_BASEADDR;
 		  asm("msr msp, %0; bx %1;" : : "r"(vector_p->stack_addr), "r"(vector_p->func_p));
 
 		  while(1){}; //Should never get here
 	  }
   }
 
+  //wait for button release
+  while(pButton) {
+	  pButton = !HAL_GPIO_ReadPin(POWER_BTN_GPIO_Port, POWER_BTN_Pin);
+	  HAL_Delay(1);
+  }
 
   /* USER CODE END SysInit */
 
@@ -262,7 +270,7 @@ int main(void)
 	  sprintf(regs.info.snString, "DBLP-01230000-00");
   }
 
-  printf("DBARLitePcie bootloader v1.0.0\n");
+  printf("DBARLitePcie bootloader v%d.%d.%d\n", ((FW_VER & 0xFF000000)>>24), ((FW_VER & 0xFF0000)>>16), ((FW_VER & 0xFF00)>>8) );
   printf("Build ");
   printf(__TIMESTAMP__);
   printf("\n");
@@ -339,8 +347,8 @@ int main(void)
 		ds160_init(&hi2c3, INTERNAL);
 		HAL_Delay(10);
 
-		pwrState = PWR_ON;
 		setPowerLed(GPIO_PIN_SET);
+		pwrState = PWR_ON;
 		printf("POWER ON \n");
 	}
 	else if(pwrState == PWR_PWRDOWN) {
@@ -462,19 +470,20 @@ int main(void)
 				uint8_t sector = regs.bootloader.flashCmd & 0x01;
 				printf("Erase flash sector %d\n", sector);
 				EraseFlash(sector);
-				regs.bootloader.flashCmd &= ~ 0x40;
+				regs.bootloader.flashCmd &= ~0x40;
 			}
 			if(regs.bootloader.flashCmd & 0x80){ // flash load
 				uint8_t sector = regs.bootloader.flashCmd & 0x01;
 				uint32_t size = txFlashMemPtr;
 				printf("Copy &d bytes to flash sector %d\n", txFlashMemPtr, sector);
 				ProgramFlash(sector, size);
-				regs.bootloader.flashCmd &= ~ 0x80;
+				regs.bootloader.flashCmd &= ~0x80;
 			}
 			if(regs.bootloader.flashCmd & 0x02) { //clear RAM buffer
 				for(size_t n = 0; n < sizeof(flashBuf); n++) {
 					flashBuf[n] = 0xFF;
 				}
+				regs.bootloader.flashCmd &= ~0x02;
 				printf("Cleared RAM buffer\n");
 			}
 		}
@@ -504,7 +513,7 @@ int main(void)
 		//OTHER COMMANDS
 		if(regs.bootloader.softReset == 0x55){
 			printf("Reset\n");
-			HAL_Delay(1000);
+			HAL_Delay(100);
 			//*jumpCodePtr = 0x00000000;
 			HAL_NVIC_SystemReset();
 		}
@@ -1581,8 +1590,8 @@ void CopyFlash() {
 	FLASH_EraseInitTypeDef FLASH_EraseInitStruct = {0};
 	FLASH_EraseInitStruct.TypeErase = FLASH_TYPEERASE_SECTORS;    //Erase type set to erase pages( Available other type is mass erase)
 	FLASH_EraseInitStruct.Banks = FLASH_BANK_1;
-	FLASH_EraseInitStruct.Sector = FLASH_SECTOR_4;            //Starting address of flash page (0x0800 0000 - 0x0801 FC00)
-	FLASH_EraseInitStruct.NbSectors = 2;                    	//Firmware size max 128KB
+	FLASH_EraseInitStruct.Sector = FLASH_SECTOR_4;
+	FLASH_EraseInitStruct.NbSectors = 2;
 
 	uint32_t  errorStatus = 0;
 
@@ -1603,6 +1612,17 @@ void CopyFlash() {
 		}
 		ptr+=(4*FLASH_NB_32BITWORD_IN_FLASHWORD);
 	}
+
+	HAL_Delay(100);
+
+	//erase flash buffer
+	FLASH_EraseInitStruct.TypeErase = FLASH_TYPEERASE_SECTORS;    //Erase type set to erase pages( Available other type is mass erase)
+	FLASH_EraseInitStruct.Banks = FLASH_BANK_1;
+	FLASH_EraseInitStruct.Sector = FLASH_SECTOR_2;
+	FLASH_EraseInitStruct.NbSectors = 2;
+
+	HAL_FLASHEx_Erase(&FLASH_EraseInitStruct,&errorStatus);
+
 	HAL_FLASH_Lock();
 	//printf("Done\n");
 }

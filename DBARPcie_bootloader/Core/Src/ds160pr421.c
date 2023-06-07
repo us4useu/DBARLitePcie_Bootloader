@@ -89,8 +89,6 @@ void ds160_init(I2C_HandleTypeDef *hi2c, uint8_t sff){
 			ds160_write(n, 0x0F, 0x04);
 			reg[n] = ds160_read(n, 0x0F);
 		}
-		printf("\SEL 0: %02X, 1: %02X, 2: %02X, 3: %02X\n", reg[0], reg[2], reg[1], reg[3]);
-		printf("SEL 0: %02X, 1: %02X, 2: %02X, 3: %02X\n", reg[4], reg[5], reg[6], reg[7]);
 	}
 	else {
 		printf("Select SFF8644 (External connection) \n");
